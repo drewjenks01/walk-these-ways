@@ -1,6 +1,10 @@
+#%%
 import isaacgym
 
+
 assert isaacgym
+# import matplotlib
+# matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import torch
 from tqdm import trange
@@ -185,22 +189,35 @@ def run_env(render=False, headless=False):
     Cfg.domain_rand.randomize_lag_timesteps = True
     Cfg.control.control_type = "actuator_net"
 
-    env = VelocityTrackingEasyEnv(sim_device='cuda:0', headless=False, cfg=Cfg)
+    env = VelocityTrackingEasyEnv(sim_device='cuda:0', headless=headless, cfg=Cfg)
     env.reset()
 
+    #env.set_main_agent_pose(loc=[0, 0, 0.34], quat=[1, 0, 0, 0])
+
+    imgs=[]
     if render and headless:
         img = env.render(mode="rgb_array")
+        #print(img)
         plt.imshow(img)
         plt.show()
         print("Show the first frame and exit.")
         exit()
 
     for i in trange(1000, desc="Running"):
+        img = env.render(mode="rgb_array")
+        imgs.append(img)
+    
         actions = 0. * torch.ones(env.num_envs, env.num_actions, device=env.device)
         obs, rew, done, info = env.step(actions)
 
+    import imageio
+    with imageio.get_writer('test.mp4', mode='I',fps=20) as writer:
+        for img in imgs:
+            writer.append_data(img)
     print("Done")
 
 
 if __name__ == '__main__':
-    run_env(render=True, headless=False)
+    run_env(render=True, headless=True)
+
+# %%

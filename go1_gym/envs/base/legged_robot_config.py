@@ -5,7 +5,7 @@ from params_proto import PrefixProto, ParamsProto
 
 class Cfg(PrefixProto, cli=False):
     class env(PrefixProto, cli=False):
-        num_envs = 4096
+        num_envs = 1000
         num_observations = 235
         num_scalar_observations = 42
         # if not None a privilige_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
@@ -63,10 +63,12 @@ class Cfg(PrefixProto, cli=False):
 
     class terrain(PrefixProto, cli=False):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
+        maze_terrain= True
         horizontal_scale = 0.1  # [m]
         vertical_scale = 0.005  # [m]
         border_size = 0  # 25 # [m]
-        curriculum = True
+        curriculum = False
+        generated = True # to use the generate terrains
         static_friction = 1.0
         dynamic_friction = 1.0
         restitution = 0.0
@@ -99,6 +101,7 @@ class Cfg(PrefixProto, cli=False):
         teleport_thresh = 2.0
         max_platform_height = 0.2
         center_robots = False
+        #corner_robots=True # spawn robot at corner
         center_span = 5
 
     class commands(PrefixProto, cli=False):

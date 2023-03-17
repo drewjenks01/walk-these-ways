@@ -1,3 +1,4 @@
+#%%
 def train_go1(headless=True):
 
     import isaacgym
@@ -213,7 +214,7 @@ def train_go1(headless=True):
     env = HistoryWrapper(env)
     gpu_id = 0
     runner = Runner(env, device=f"cuda:{gpu_id}")
-    runner.learn(num_learning_iterations=100000, init_at_random_ep_len=True, eval_freq=100)
+    runner.learn(num_learning_iterations=5000, init_at_random_ep_len=True, eval_freq=100)
 
 
 if __name__ == '__main__':
@@ -254,3 +255,5 @@ if __name__ == '__main__':
 
     # to see the environment rendering, set headless=False
     train_go1(headless=False)
+
+# %%

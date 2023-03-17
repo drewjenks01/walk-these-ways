@@ -9,6 +9,7 @@ from params_proto import PrefixProto
 
 from .actor_critic import ActorCritic
 from .rollout_storage import RolloutStorage
+from tqdm import tqdm
 
 
 def class_to_dict(obj) -> dict:
@@ -132,7 +133,7 @@ class Runner:
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
 
         tot_iter = self.current_learning_iteration + num_learning_iterations
-        for it in range(self.current_learning_iteration, tot_iter):
+        for it in tqdm(range(self.current_learning_iteration, tot_iter)):
             start = time.time()
             # Rollout
             with torch.inference_mode():

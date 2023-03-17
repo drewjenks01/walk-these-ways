@@ -981,6 +981,7 @@ class LeggedRobot(BaseTask):
                                                                device=self.device)
             self.root_states[env_ids, 0] += cfg.terrain.x_init_offset
             self.root_states[env_ids, 1] += cfg.terrain.y_init_offset
+
         else:
             self.root_states[env_ids] = self.base_init_state
             self.root_states[env_ids, :3] += self.env_origins[env_ids]
@@ -1608,10 +1609,10 @@ class LeggedRobot(BaseTask):
         self.complete_video_frames = []
         self.complete_video_frames_eval = []
 
-    def render(self, mode="rgb_array"):
+    def render(self, mode="rgb_array", offset=[0, -1, 1]):
         assert mode == "rgb_array"
         bx, by, bz = self.root_states[0, 0], self.root_states[0, 1], self.root_states[0, 2]
-        self.gym.set_camera_location(self.rendering_camera, self.envs[0], gymapi.Vec3(bx, by - 1.0, bz + 1.0),
+        self.gym.set_camera_location(self.rendering_camera, self.envs[0], gymapi.Vec3(bx + offset[0], by + offset[1], bz + offset[2]),
                                      gymapi.Vec3(bx, by, bz))
         self.gym.step_graphics(self.sim)
         self.gym.render_all_camera_sensors(self.sim)
@@ -1676,7 +1677,10 @@ class LeggedRobot(BaseTask):
         """ Sets environment origins. On rough terrain the origins are defined by the terrain platforms.
             Otherwise create a grid.
         """
-        if cfg.terrain.mesh_type in ["heightfield", "trimesh"]:
+        if cfg.terrain.maze_terrain:
+            self.custom_origins=True
+            self.env_origins[env_ids]=torch.from_numpy(np.array([1.,1.,0.25])).to(self.device).to(torch.float)
+        elif cfg.terrain.mesh_type in ["heightfield", "trimesh"]:
             self.custom_origins = True
             # put robots at the origins defined by the terrain
             max_init_level = cfg.terrain.max_init_terrain_level

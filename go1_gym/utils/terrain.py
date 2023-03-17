@@ -5,12 +5,17 @@ import math
 import numpy as np
 from isaacgym import terrain_utils
 from numpy.random import choice
+import pandas as pd
+from scipy.interpolate import interp2d
+from tensorflow.keras.models import load_model
+import cv2
+import torch
 
 from go1_gym.envs.base.legged_robot_config import Cfg
 
 
 class Terrain:
-    def __init__(self, cfg: Cfg.terrain, num_robots, eval_cfg=None, num_eval_robots=0) -> None:
+    def __init__(self, cfg: Cfg.terrain, num_robots, eval_cfg=None, num_eval_robots=0, use_generated_terrain=False) -> None:
 
         self.cfg = cfg
         self.eval_cfg = eval_cfg
@@ -19,8 +24,8 @@ class Terrain:
         if self.type in ["none", 'plane']:
             return
         self.train_rows, self.train_cols, self.eval_rows, self.eval_cols = self.load_cfgs()
-        self.tot_rows = len(self.train_rows) + len(self.eval_rows)
-        self.tot_cols = max(len(self.train_cols), len(self.eval_cols))
+        self.tot_rows = len(self.train_rows) #+ len(self.eval_rows)
+        self.tot_cols = len(self.train_cols)#, len(self.eval_cols))
         self.cfg.env_length = cfg.terrain_length
         self.cfg.env_width = cfg.terrain_width
 
@@ -35,21 +40,23 @@ class Terrain:
                                                                                          self.cfg.vertical_scale,
                                                                                          self.cfg.slope_treshold)
 
+
+
     def load_cfgs(self):
         self._load_cfg(self.cfg)
         self.cfg.row_indices = np.arange(0, self.cfg.tot_rows)
         self.cfg.col_indices = np.arange(0, self.cfg.tot_cols)
         self.cfg.x_offset = 0
         self.cfg.rows_offset = 0
-        if self.eval_cfg is None:
-            return self.cfg.row_indices, self.cfg.col_indices, [], []
-        else:
-            self._load_cfg(self.eval_cfg)
-            self.eval_cfg.row_indices = np.arange(self.cfg.tot_rows, self.cfg.tot_rows + self.eval_cfg.tot_rows)
-            self.eval_cfg.col_indices = np.arange(0, self.eval_cfg.tot_cols)
-            self.eval_cfg.x_offset = self.cfg.tot_rows
-            self.eval_cfg.rows_offset = self.cfg.num_rows
-            return self.cfg.row_indices, self.cfg.col_indices, self.eval_cfg.row_indices, self.eval_cfg.col_indices
+        # if self.eval_cfg is None:
+        return self.cfg.row_indices, self.cfg.col_indices, [], []
+        # else:
+        #     self._load_cfg(self.eval_cfg)
+        #     self.eval_cfg.row_indices = np.arange(self.cfg.tot_rows, self.cfg.tot_rows + self.eval_cfg.tot_rows)
+        #     self.eval_cfg.col_indices = np.arange(0, self.eval_cfg.tot_cols)
+        #     self.eval_cfg.x_offset = self.cfg.tot_rows
+        #     self.eval_cfg.rows_offset = self.cfg.num_rows
+        #     return self.cfg.row_indices, self.cfg.col_indices, self.eval_cfg.row_indices, self.eval_cfg.col_indices
 
     def _load_cfg(self, cfg):
         cfg.proportions = [np.sum(cfg.terrain_proportions[:i + 1]) for i in range(len(cfg.terrain_proportions))]
@@ -64,13 +71,17 @@ class Terrain:
         cfg.tot_cols = int(cfg.num_cols * cfg.width_per_env_pixels) + 2 * cfg.border
         cfg.tot_rows = int(cfg.num_rows * cfg.length_per_env_pixels) + 2 * cfg.border
 
+        print(cfg.tot_cols, cfg.tot_rows)
+
     def initialize_terrains(self):
         self._initialize_terrain(self.cfg)
         if self.eval_cfg is not None:
             self._initialize_terrain(self.eval_cfg)
 
     def _initialize_terrain(self, cfg):
-        if cfg.curriculum:
+        if cfg.generated:
+            self.generated_terrain(cfg)
+        elif cfg.curriculum:
             self.curriculum(cfg)
         elif cfg.selected:
             self.selected_terrain(cfg)
@@ -86,6 +97,170 @@ class Terrain:
             difficulty = np.random.choice([0.5, 0.75, 0.9])
             terrain = self.make_terrain(cfg, choice, difficulty, cfg.proportions)
             self.add_terrain_to_map(cfg, terrain, i, j)
+
+    def generated_terrain(self,cfg,map_file=True):
+
+        ########################
+        # Generate terrain and downsample or upsample to cfg.length_per_env_pixels x cfg.length_per_env_pixels
+
+        # envWidth, downsampleRes, myRes = cfg.length_per_env_pixels, 0.035 / 50.0 * 225, 0.035
+        envWidth, downsampleRes, myRes = cfg.length_per_env_pixels, 0.035 / 50.0 * 225, 0.035
+        # myCorStart, mySize = int(-112*myRes/downsampleRes), int(225*myRes/downsampleRes)
+        myCorStart, mySize = -envWidth // 2, envWidth #int(-112*myRes/downsampleRes), int(225*myRes/downsampleRes)
+        myGrids = np.linspace(-112*myRes, 112*myRes, num=225)
+        interpGrids = np.linspace(myCorStart*downsampleRes,(myCorStart+mySize-1)*downsampleRes, num=mySize)
+        algoHeightScale, myHeightScale = 0.005, myRes * 15
+
+        if map_file:
+            myMap = pd.read_csv(r'scripts/terrain_benchmark-main/medium/elevation0003.txt', sep=' ', header=None).values[::-1,:].T
+        else:
+            w_noise = np.random.normal(0, 1, (1, 14, 14, 1024))
+            source1 = np.random.rand(225,225,1)<25/225/225
+            source2 = np.random.rand(225,225,1)<25/225/225
+            source = np.concatenate([source1,source2],axis=-1)[None]
+            
+            generator = load_model('scripts/terrain_benchmark-main/terrain_generation/terrain_generator50000.h5')
+
+            myMap = generator([source, w_noise])[0][:,:,0]
+            # print('preddddddd',predicted.shape)
+            # im = np.uint8(predicted[0, ...] * 127.5 + 127.5) #[-1,1->0,255]
+            # im_source = np.uint8(source[0, ...] * 255)  # [0,1->0,255]
+
+            # real_height = predicted[0, ...] 
+            # # smooth
+            # real_height = cv2.GaussianBlur(real_height,(5,5),1.0)* 12.5 + 12.5 # -> 0-25cm
+            # # 225 * 225 grid * 2.5 cm grid size
+            # # Example 2D array of elevation, and constant gridsize
+            # elev = real_height[:,:]
+            # cellsize = 2.5
+            # px, py = np.gradient(elev, cellsize)
+            # slope = np.sqrt(px ** 2 + py ** 2)
+            # slope = np.abs(np.arctan(slope)/np.pi*2)
+            # print(np.squeeze(im, axis=-1).shape, np.uint8(slope*255).shape, im_source[..., 0].shape, im_source[..., 1].shape)
+            # myMap = np.concatenate((np.squeeze(im, axis=-1), np.uint8(slope*255), im_source[..., 0], im_source[..., 1]), axis=1)
+            # print('shapeeeeee',myMap.shape)
+
+        myDS = interp2d(myGrids, myGrids, myMap)
+        interpHeight = myDS(interpGrids, interpGrids)* myHeightScale / algoHeightScale
+
+        # change interpHeight for the maze values
+        # for r in range(1,len(interpHeight)):
+        #     for c in range(0,len(interpHeight),30):
+        #         interpHeight[r][c-4:c+4]*=3/4
+
+        # interpHeight[0,:]*=3/4
+        # interpHeight[len(interpHeight)-2,:]*=1/2
+        # print('iiiiii',interpHeight.shape)
+
+        # first vert
+
+
+
+        #print(myGrids.shape,interpHeight.shape)
+        terrain = terrain_utils.SubTerrain("terrain",
+                                               width=cfg.width_per_env_pixels,
+                                               length=cfg.width_per_env_pixels,
+                                               vertical_scale=cfg.vertical_scale,
+                                               horizontal_scale=cfg.horizontal_scale)
+        #################################
+
+        #TODO: bug -> can only do rows-1 and cols-1 otherwise broadcast error
+        for j in range(cfg.num_cols):
+            for i in range(cfg.num_rows):
+
+                #print("pixels_per_env", cfg.length_per_env_pixels, cfg.width_per_env_pixels)
+
+                # map coordinate system
+                start_x = cfg.border + i * cfg.length_per_env_pixels + cfg.x_offset
+                end_x = cfg.border + (i + 1) * cfg.length_per_env_pixels + cfg.x_offset
+                start_y = cfg.border + j * cfg.width_per_env_pixels
+                end_y = cfg.border + (j + 1) * cfg.width_per_env_pixels
+                # new_start_x=start_x #+ envWidth // 2 + myCorStart
+                # new_end_x= start_x + mySize #+ envWidth // 2 + myCorStart
+                # new_start_y=start_y # + envWidth // 2 + myCorStart
+                # new_end_y=start_y + mySize # + envWidth // 2 + myCorStart
+                # print(self.height_field_raw.shape,i,j,start_x,end_x,start_y,end_y,self.height_field_raw[start_x:end_x,
+                #         start_y:end_y].shape,interpHeight.shape)
+
+
+                
+                self.height_field_raw[start_x:end_x,
+                        start_y:end_y]=interpHeight
+            
+
+                env_origin_x = (i + 0.5) * cfg.terrain_length + cfg.x_offset * terrain.horizontal_scale
+                env_origin_y = int((j + 0.5) * cfg.terrain_width)
+                env_origin_z = np.max(self.height_field_raw[start_x: end_x, start_y:end_y]) * terrain.vertical_scale
+
+                cfg.env_origins[i, j] = [env_origin_x, env_origin_y, env_origin_z]
+
+        print(self.height_field_raw.shape)
+
+        scale_fac=3
+
+        # start pad
+        #self.height_field_raw[2:40,2:30]=np.floor_divide(self.height_field_raw[2:40,2:30],3.5)
+
+        # right
+        self.height_field_raw[10:15,30:75] =np.floor_divide(self.height_field_raw[10:15,30:75],scale_fac)
+
+        # down
+        self.height_field_raw[14:55,69:75]=np.floor_divide(self.height_field_raw[14:55,69:75],scale_fac)
+
+        # left
+        self.height_field_raw[49:55,74:120]=np.floor_divide(self.height_field_raw[49:55,74:120],scale_fac)
+
+        # down
+        self.height_field_raw[54:120,114:120]=np.floor_divide(self.height_field_raw[54:120,114:120],scale_fac)
+
+        # left
+        self.height_field_raw[114:120,119:130]=np.floor_divide(self.height_field_raw[114:120,119:130],scale_fac)
+
+        # down
+        self.height_field_raw[119:130,124:130]=np.floor_divide(self.height_field_raw[119:130,124:130],scale_fac)
+
+        # end
+        self.height_field_raw[130:149,124:149]=np.floor_divide(self.height_field_raw[130:149,124:149],3.5)
+
+
+
+        # self.height_field_raw[1:-1,15:24]=np.floor_divide(self.height_field_raw[1:-1,15:24],2)
+
+        # # to the right
+        # self.height_field_raw[2,1:len(self.height_field_raw[0])//2]//=2
+
+        # # down
+        # self.height_field_raw[1:-1,len(self.height_field_raw[0])//2]//=4
+
+        # # to the left
+        # self.height_field_raw[-2,len(self.height_field_raw[0])//2:-1]//=2
+
+
+        # # up
+        # self.height_field_raw[1:,-1]//=4
+
+
+        
+        
+        # def make_path(hf):
+        #     import random
+        #     loc=[0,0]
+            
+
+        #     for r in range(1,len(hf)):
+        #         for c in range(0,len(hf[0]),30):
+        #             hf[r][c-2:c+3]=0
+
+
+        #     return hf
+
+        #self.height_field_raw=make_path(self.height_field_raw)
+
+
+
+
+
+        # self.height_field_raw[100:150, :] = 0
 
     def curriculum(self, cfg):
         for j in range(cfg.num_cols):

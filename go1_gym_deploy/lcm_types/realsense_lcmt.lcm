@@ -1,0 +1,4 @@
+struct realsense_lcmt
+{
+    float commands[6];
+}

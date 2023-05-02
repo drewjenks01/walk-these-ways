@@ -68,3 +68,11 @@ docker/rsc
 *.jit
 tmp
 *.tar
+
+*.urdf
+*.stl
+*.xacro
+*.pkl
+*.pth
+*.png
+*.obj

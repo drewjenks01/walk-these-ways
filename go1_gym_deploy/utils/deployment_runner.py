@@ -11,11 +11,13 @@ from go1_gym_deploy.utils.logger import MultiLogger
 class DeploymentRunner:
     def __init__(self, experiment_name="unnamed", se=None, log_root="."):
         self.agents = {}
-        self.policy = None
+        self.policies = {}
         self.command_profile = None
         self.logger = MultiLogger()
         self.se = se
         self.vision_server = None
+
+        self.policy='walk'
 
         self.log_root = log_root
         self.init_log_filename()
@@ -55,8 +57,8 @@ class DeploymentRunner:
     def set_command_agents(self, name):
         self.command_agent = name
 
-    def add_policy(self, policy):
-        self.policy = policy
+    def add_policy(self, policy,name):
+        self.policies[name] = policy
 
     def add_command_profile(self, command_profile):
         self.command_profile = command_profile
@@ -124,7 +126,7 @@ class DeploymentRunner:
 
     def run(self, num_log_steps=1000000000, max_steps=100000000, logging=True):
         assert self.control_agent_name is not None, "cannot deploy, runner has no control agent!"
-        assert self.policy is not None, "cannot deploy, runner has no policy!"
+        assert self.policies is not None, "cannot deploy, runner has no policy!"
         assert self.command_profile is not None, "cannot deploy, runner has no command profile!"
 
         # TODO: add basic test for comms
@@ -134,6 +136,9 @@ class DeploymentRunner:
             if agent_name == self.control_agent_name:
                 control_obs = obs
 
+        
+        self.agents[self.control_agent_name].yaw_bool = self.command_profile.yaw_bool
+        self.policy = self.command_profile.policy
         control_obs = self.calibrate(wait=True)
 
         # now, run control loop
@@ -141,8 +146,24 @@ class DeploymentRunner:
         try:
             for i in range(max_steps):
 
+                # update env yaw bool form commmand profile
+                self.agents[self.control_agent_name].yaw_bool = self.command_profile.yaw_bool
+                self.policy = self.command_profile.policy
+
+                #control_obs = self.
+
+                #print(control_obs['obs_history'].shape)
+
+                # post-process obs in case mode switch
+                control_obs,policy =  self.agents[self.control_agent_name].get_post_obs(control_obs, self.policy)
+                self.policy=policy
+                #print('post', control_obs['obs_history'].shape)
+
                 policy_info = {}
-                action = self.policy(control_obs, policy_info)
+                action = self.policies[self.policy](control_obs, policy_info)
+
+                self.agents[self.control_agent_name].yaw_bool = self.command_profile.yaw_bool
+                self.policy = self.command_profile.policy
 
                 for agent_name in self.agents.keys():
                     obs, ret, done, info = self.agents[agent_name].step(action)
@@ -151,11 +172,15 @@ class DeploymentRunner:
                     info.update({"observation": obs, "reward": ret, "done": done, "timestep": i,
                                  "time": i * self.agents[self.control_agent_name].dt, "action": action, "rpy": self.agents[self.control_agent_name].se.get_rpy(), "torques": self.agents[self.control_agent_name].torques})
 
+                    
+                    # placeholder for jenkins experiment
+                    logging=False
+
                     if logging: self.logger.log(agent_name, info)
 
                     if agent_name == self.control_agent_name:
                         control_obs, control_ret, control_done, control_info = obs, ret, done, info
-
+               
                 # bad orientation emergency stop
                 rpy = self.agents[self.control_agent_name].se.get_rpy()
                 if abs(rpy[0]) > 1.6 or abs(rpy[1]) > 1.6:

@@ -112,7 +112,10 @@ class Terrain:
         algoHeightScale, myHeightScale = 0.005, myRes * 15
 
         if map_file:
-            myMap = pd.read_csv(r'scripts/terrain_benchmark-main/medium/elevation0003.txt', sep=' ', header=None).values[::-1,:].T
+
+            #TODO: MAKE SURE TO CHANGE TERRAIN VAR IN DEMO IF THIS FILENAME IS CHANGED
+
+            myMap = pd.read_csv(f'scripts/terrain_benchmark-main/hard/elevation{cfg.generated_name}.txt', sep=' ', header=None).values[::-1,:].T
         else:
             w_noise = np.random.normal(0, 1, (1, 14, 14, 1024))
             source1 = np.random.rand(225,225,1)<25/225/225
@@ -122,41 +125,12 @@ class Terrain:
             generator = load_model('scripts/terrain_benchmark-main/terrain_generation/terrain_generator50000.h5')
 
             myMap = generator([source, w_noise])[0][:,:,0]
-            # print('preddddddd',predicted.shape)
-            # im = np.uint8(predicted[0, ...] * 127.5 + 127.5) #[-1,1->0,255]
-            # im_source = np.uint8(source[0, ...] * 255)  # [0,1->0,255]
 
-            # real_height = predicted[0, ...] 
-            # # smooth
-            # real_height = cv2.GaussianBlur(real_height,(5,5),1.0)* 12.5 + 12.5 # -> 0-25cm
-            # # 225 * 225 grid * 2.5 cm grid size
-            # # Example 2D array of elevation, and constant gridsize
-            # elev = real_height[:,:]
-            # cellsize = 2.5
-            # px, py = np.gradient(elev, cellsize)
-            # slope = np.sqrt(px ** 2 + py ** 2)
-            # slope = np.abs(np.arctan(slope)/np.pi*2)
-            # print(np.squeeze(im, axis=-1).shape, np.uint8(slope*255).shape, im_source[..., 0].shape, im_source[..., 1].shape)
-            # myMap = np.concatenate((np.squeeze(im, axis=-1), np.uint8(slope*255), im_source[..., 0], im_source[..., 1]), axis=1)
-            # print('shapeeeeee',myMap.shape)
 
         myDS = interp2d(myGrids, myGrids, myMap)
         interpHeight = myDS(interpGrids, interpGrids)* myHeightScale / algoHeightScale
 
-        # change interpHeight for the maze values
-        # for r in range(1,len(interpHeight)):
-        #     for c in range(0,len(interpHeight),30):
-        #         interpHeight[r][c-4:c+4]*=3/4
 
-        # interpHeight[0,:]*=3/4
-        # interpHeight[len(interpHeight)-2,:]*=1/2
-        # print('iiiiii',interpHeight.shape)
-
-        # first vert
-
-
-
-        #print(myGrids.shape,interpHeight.shape)
         terrain = terrain_utils.SubTerrain("terrain",
                                                width=cfg.width_per_env_pixels,
                                                length=cfg.width_per_env_pixels,
@@ -164,24 +138,14 @@ class Terrain:
                                                horizontal_scale=cfg.horizontal_scale)
         #################################
 
-        #TODO: bug -> can only do rows-1 and cols-1 otherwise broadcast error
         for j in range(cfg.num_cols):
             for i in range(cfg.num_rows):
-
-                #print("pixels_per_env", cfg.length_per_env_pixels, cfg.width_per_env_pixels)
 
                 # map coordinate system
                 start_x = cfg.border + i * cfg.length_per_env_pixels + cfg.x_offset
                 end_x = cfg.border + (i + 1) * cfg.length_per_env_pixels + cfg.x_offset
                 start_y = cfg.border + j * cfg.width_per_env_pixels
                 end_y = cfg.border + (j + 1) * cfg.width_per_env_pixels
-                # new_start_x=start_x #+ envWidth // 2 + myCorStart
-                # new_end_x= start_x + mySize #+ envWidth // 2 + myCorStart
-                # new_start_y=start_y # + envWidth // 2 + myCorStart
-                # new_end_y=start_y + mySize # + envWidth // 2 + myCorStart
-                # print(self.height_field_raw.shape,i,j,start_x,end_x,start_y,end_y,self.height_field_raw[start_x:end_x,
-                #         start_y:end_y].shape,interpHeight.shape)
-
 
                 
                 self.height_field_raw[start_x:end_x,
@@ -194,12 +158,16 @@ class Terrain:
 
                 cfg.env_origins[i, j] = [env_origin_x, env_origin_y, env_origin_z]
 
-        print(self.height_field_raw.shape)
 
-        scale_fac=3
+        if self.cfg.generated_diff=='easy':
+            scale_fac=3.5
+        elif self.cfg.generated_diff=='medium':
+            scale_fac=2.5
+        else:
+            scale_fac=2.0
 
         # start pad
-        #self.height_field_raw[2:40,2:30]=np.floor_divide(self.height_field_raw[2:40,2:30],3.5)
+        self.height_field_raw[2:40,2:30]=np.floor_divide(self.height_field_raw[2:40,2:30],3.5)
 
         # right
         self.height_field_raw[10:15,30:75] =np.floor_divide(self.height_field_raw[10:15,30:75],scale_fac)
@@ -223,44 +191,6 @@ class Terrain:
         self.height_field_raw[130:149,124:149]=np.floor_divide(self.height_field_raw[130:149,124:149],3.5)
 
 
-
-        # self.height_field_raw[1:-1,15:24]=np.floor_divide(self.height_field_raw[1:-1,15:24],2)
-
-        # # to the right
-        # self.height_field_raw[2,1:len(self.height_field_raw[0])//2]//=2
-
-        # # down
-        # self.height_field_raw[1:-1,len(self.height_field_raw[0])//2]//=4
-
-        # # to the left
-        # self.height_field_raw[-2,len(self.height_field_raw[0])//2:-1]//=2
-
-
-        # # up
-        # self.height_field_raw[1:,-1]//=4
-
-
-        
-        
-        # def make_path(hf):
-        #     import random
-        #     loc=[0,0]
-            
-
-        #     for r in range(1,len(hf)):
-        #         for c in range(0,len(hf[0]),30):
-        #             hf[r][c-2:c+3]=0
-
-
-        #     return hf
-
-        #self.height_field_raw=make_path(self.height_field_raw)
-
-
-
-
-
-        # self.height_field_raw[100:150, :] = 0
 
     def curriculum(self, cfg):
         for j in range(cfg.num_cols):

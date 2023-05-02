@@ -1,6 +1,5 @@
 import torch
 
-
 class CommandProfile:
     def __init__(self, dt, max_time_s=10.):
         self.dt = dt
@@ -182,7 +181,91 @@ class RCControllerProfileAccel(RCControllerProfile):
         return self.state_estimator.get_buttons()
 
 
+class VisionControllerProfile(RCControllerProfile):
+    def __init__(self, dt, state_estimator, x_scale=1.0, y_scale=1.0, yaw_scale=1.0):
+        super().__init__(dt, state_estimator, x_scale=x_scale, y_scale=y_scale, yaw_scale=yaw_scale)
 
+        # whether or not CommandNet being used
+        self.use_commandnet = False
+
+        # which low-level poliocy being used
+        self.policy='walk'
+
+        # use yaw in obs or not (for policies)
+        self.yaw_bool = False
+
+        # whether XBOX or RC controller used
+        self.controller = 0   # 0=RC, 1=XBOX
+        self.xbox=None
+
+
+    def get_command(self, t, probe=False):
+
+        commands, reset_timer = super().get_command(t, probe)
+
+        # check if change controller command from rc
+        se_mode = self.state_estimator.mode
+
+        #print('received command',self.state_estimator.realsense_commands)
+
+        if self.use_commandnet:
+            x_cmd , y_cmd, yaw_cmd ,fs_height_cmd, step_freq_cmd, policy = self.state_estimator.realsense_commands
+            
+            if policy==1.0:
+                self.policy='stairs'
+                self.yaw_bool = True
+            elif policy==0.0:
+                self.policy='walk'
+                self.yaw_bool = False
+
+            commands[0] = x_cmd
+            commands[1]= y_cmd
+            commands[2] = yaw_cmd
+            commands[4] = step_freq_cmd
+            commands[9] = fs_height_cmd
+
+            # multipliers
+            commands[0] = commands[0] * self.x_scale
+            commands[1] = commands[1] * self.y_scale
+            commands[2] = commands[2] * self.yaw_scale
+
+        else:
+
+            # override policy if there is a negative x command
+            if commands[0]<0:
+                se_mode = 6
+
+            if se_mode==4:  # if UP arrow recorded on controller
+                self.policy = 'stairs' # stair policy
+
+                self.yaw_bool=True
+
+                commands[4] = 2.0       # step freq
+                commands[9] = 0.30      # footswing height
+
+            elif se_mode==6: # if DOWN arrow record on controller
+                self.policy = 'walk' # walk policy
+
+                self.yaw_bool=False
+
+                commands[4] = 3.0
+                commands[9] = 0.08
+
+        if se_mode==5: #right dpad
+            self.use_commandnet=True
+
+        elif se_mode==7: #left dpad
+            self.use_commandnet=False
+
+
+        return commands, reset_timer
+
+
+    def add_triggered_command(self, button_idx, command_profile):
+        self.triggered_commands[button_idx] = command_profile
+
+    def get_buttons(self):
+        return self.state_estimator.get_buttons()
 
 
 class KeyboardProfile(CommandProfile):

@@ -13,29 +13,40 @@ import pathlib
 lc = lcm.LCM("udpm://239.255.76.67:7667?ttl=255")
 
 def load_and_run_policy(label, experiment_name, max_vel=1.0, max_yaw_vel=1.0):
-    # load agent
-    dirs = glob.glob(f"../../runs/{label}/*")
-    logdir = sorted(dirs)[0]
 
-    with open(logdir+"/parameters.pkl", 'rb') as file:
+    walk_dir = f"../../runs/{label}/pretrain-v0"
+    stair_dir = f"../../runs/{label}/pretrain-stairs"
+    # # load agent
+    # dirs = glob.glob(f"../../runs/{label}/*")
+    # logdir = sorted(dirs)[0]
+
+    with open(walk_dir+"/parameters.pkl", 'rb') as file:
         pkl_cfg = pkl.load(file)
         print(pkl_cfg.keys())
         cfg = pkl_cfg["Cfg"]
         print(cfg.keys())
 
+    #update config for stair policy
+    cfg['env']['num_observations']=71
+    cfg['env']['num_scalar_observations']=71
+    cfg['env']['observe_yaw']=True
+
 
     se = StateEstimator(lc)
 
     control_dt = 0.02
-    command_profile = RCControllerProfile(dt=control_dt, state_estimator=se, x_scale=max_vel, y_scale=0.6, yaw_scale=max_yaw_vel)
+    command_profile = VisionControllerProfile(dt=control_dt, state_estimator=se, x_scale=max_vel, y_scale=0.6, yaw_scale=max_yaw_vel)
+    # command_profile = RCControllerProfile(dt=control_dt, state_estimator=se, x_scale=max_vel, y_scale=0.6, yaw_scale=max_yaw_vel)
 
     hardware_agent = LCMAgent(cfg, se, command_profile)
     se.spin()
 
-    from go1_gym_deploy.envs.history_wrapper import HistoryWrapper
-    hardware_agent = HistoryWrapper(hardware_agent)
+    from go1_gym_deploy.envs.no_yaw_wrapper import NoYawWrapper
+    hardware_agent = NoYawWrapper(hardware_agent)
 
-    policy = load_policy(logdir)
+
+    walk_policy = load_policy(walk_dir)
+    stair_policy = load_policy(stair_dir)
 
     # load runner
     root = f"{pathlib.Path(__file__).parent.resolve()}/../../logs/"
@@ -43,7 +54,8 @@ def load_and_run_policy(label, experiment_name, max_vel=1.0, max_yaw_vel=1.0):
     deployment_runner = DeploymentRunner(experiment_name=experiment_name, se=None,
                                          log_root=f"{root}/{experiment_name}")
     deployment_runner.add_control_agent(hardware_agent, "hardware_closed_loop")
-    deployment_runner.add_policy(policy)
+    deployment_runner.add_policy(walk_policy,'walk')
+    deployment_runner.add_policy(stair_policy,'stairs')
     deployment_runner.add_command_profile(command_profile)
 
     if len(sys.argv) >= 2:
@@ -70,7 +82,7 @@ def load_policy(logdir):
 
 
 if __name__ == '__main__':
-    label = "gait-conditioned-agility/pretrain-v0/train"
+    label = "gait-conditioned-agility"
 
     experiment_name = "example_experiment"
 

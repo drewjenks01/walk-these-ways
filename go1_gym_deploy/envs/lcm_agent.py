@@ -277,7 +277,6 @@ class LCMAgent():
                 images[k] = cv2.resize(images[k], dsize=(images[k].shape[0]//downscale_factor, images[k].shape[1]//downscale_factor), interpolation=cv2.INTER_CUBIC)
             if self.timestep % temporal_downscale != 0:
                 images[k] = None
-        #print(self.commands)
 
         infos = {"joint_pos": self.dof_pos[np.newaxis, :],
                  "joint_vel": self.dof_vel[np.newaxis, :],
@@ -288,7 +287,9 @@ class LCMAgent():
                  "contact_state": self.contact_state[np.newaxis, :],
                  "clock_inputs": self.clock_inputs[np.newaxis, :],
                  "body_linear_vel_cmd": self.commands[:, 0:2],
-                 "body_angular_vel_cmd": self.commands[:, 2:],
+                 "body_angular_vel_cmd": self.commands[:, 2],
+                 'step_freq_cmd': self.commands[:,4],
+                 'footswing_height_cmd': self.commands[:,9],
                  "privileged_obs": None,
                  "camera_image_front": images['front'],
                  "camera_image_bottom": images['bottom'],

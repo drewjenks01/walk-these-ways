@@ -120,6 +120,10 @@ class LeggedRobot(BaseTask):
         self.check_termination()
         self.compute_reward()
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
+
+        # if len(env_ids)>0 and env_ids.cpu().item()>0:
+        if self.cfg.terrain.icra or self.cfg.terrain.generated:
+            env_ids = torch.tensor([]).cuda()
         self.reset_idx(env_ids)
         self.compute_observations()
 
@@ -1514,6 +1518,16 @@ class LeggedRobot(BaseTask):
         dof_props_asset = self.gym.get_asset_dof_properties(self.robot_asset)
         rigid_shape_props_asset = self.gym.get_asset_rigid_shape_properties(self.robot_asset)
 
+        # ICRA additions
+        if self.cfg.terrain.icra:
+            self.icra_asset = self.gym.load_asset(self.sim, '/home/andrewjenkins/walk-these-ways/navigation/icra/urdf', 'innermap.urdf', asset_options)
+            self.icra_num_bodies = self.gym.get_asset_rigid_body_count(self.icra_asset)
+            icra_body_names = self.gym.get_asset_rigid_body_names(self.icra_asset)
+            icra_rigid_shape_props_asset = self.gym.get_asset_rigid_shape_properties(self.icra_asset)
+            icra_start_pose = gymapi.Transform()
+            icra_start_pose.p = gymapi.Vec3(5.0,10.0,0.0)
+            # ------
+
         # save body names from the asset
         body_names = self.gym.get_asset_rigid_body_names(self.robot_asset)
         self.dof_names = self.gym.get_asset_dof_names(self.robot_asset)
@@ -1570,6 +1584,15 @@ class LeggedRobot(BaseTask):
             self.gym.set_actor_rigid_body_properties(env_handle, anymal_handle, body_props, recomputeInertia=True)
             self.envs.append(env_handle)
             self.actor_handles.append(anymal_handle)
+
+            # ICRA
+            if self.cfg.terrain.icra:
+                if i==0:
+                    icra_rigid_shape_props = self._process_rigid_shape_props(icra_rigid_shape_props_asset, i)
+                    self.gym.set_asset_rigid_shape_properties(self.icra_asset, icra_rigid_shape_props)
+                    icra_handle = self.gym.create_actor(env_handle, self.icra_asset,  icra_start_pose, "icra",i,
+                                                    self.cfg.asset.self_collisions, 0)
+                    self.actor_handles.append(icra_handle)
 
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):

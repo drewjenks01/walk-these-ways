@@ -10,6 +10,7 @@ from go1_gym_deploy.lcm_types.rc_command_lcmt import rc_command_lcmt
 from go1_gym_deploy.lcm_types.state_estimator_lcmt import state_estimator_lcmt
 from go1_gym_deploy.lcm_types.camera_message_lcmt import camera_message_lcmt
 from go1_gym_deploy.lcm_types.camera_message_rect_wide import camera_message_rect_wide
+from go1_gym_deploy.lcm_types.realsense_lcmt import realsense_lcmt
 
 
 def get_rpy_from_quaternion(q):
@@ -110,6 +111,7 @@ class StateEstimator:
         self.imu_subscription = self.lc.subscribe("state_estimator_data", self._imu_cb)
         self.legdata_state_subscription = self.lc.subscribe("leg_control_data", self._legdata_cb)
         self.rc_command_subscription = self.lc.subscribe("rc_command", self._rc_command_cb)
+        self.realsense_subscription = self.lc.subscribe("realsense_command_data", self._rs_commanddata_cb)
 
         if use_cameras:
             for cam_id in [1, 2, 3, 4, 5]:
@@ -122,6 +124,8 @@ class StateEstimator:
         self.camera_image_front = None
         self.camera_image_bottom = None
         self.camera_image_rear = None
+
+        self.realsense_commands = None
 
         self.body_loc = np.array([0, 0, 0])
         self.body_quat = np.array([0, 0, 0, 1])
@@ -167,7 +171,7 @@ class StateEstimator:
         cmd_y = 0.  # -1 * self.left_stick[0]
         cmd_height = 0.
         cmd_footswing = 0.08
-        cmd_stance_width = 0.33
+        cmd_stance_width = 0.35
         cmd_stance_length = 0.40
         cmd_ori_pitch = 0.
         cmd_ori_roll = 0.
@@ -371,6 +375,15 @@ class StateEstimator:
             self.camera_image_rear = img
         else:
             print("Image received from camera with unknown ID#!")
+
+    def _rs_commanddata_cb(self, channel, data):
+        print(data)
+
+        msg = realsense_lcmt.decode(data)
+
+        commands = msg.commands
+
+        self.realsense_commands = commands
 
     def poll(self, cb=None):
         t = time.time()

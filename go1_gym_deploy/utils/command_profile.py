@@ -186,7 +186,7 @@ class RCControllerProfileAccel(RCControllerProfile):
 class VisionControllerProfile(RCControllerProfile):
     
     def __init__(self, dt, state_estimator, x_scale=1.0, y_scale=1.0, yaw_scale=1.0, random_drift=False):
-        super().__init__(dt, state_estimator, x_scale=x_scale, y_scale=y_scale, yaw_scale=yaw_scale)
+        super().__init__(dt, state_estimator, x_scale=x_scale, y_scale=y_scale, yaw_scale=2.0)
 
         # whether or not CommandNet being used
         self.use_commandnet = False
@@ -208,6 +208,7 @@ class VisionControllerProfile(RCControllerProfile):
             self.domain_change_timer = time.time()
 
 
+
     def get_command(self, t, probe=False):
 
         commands, reset_timer = super().get_command(t, probe)
@@ -220,14 +221,23 @@ class VisionControllerProfile(RCControllerProfile):
         if self.use_commandnet:
             x_cmd , y_cmd, yaw_cmd, policy = self.state_estimator.realsense_commands
             
-            if policy==1.0:
+            if policy==1:
                 self.policy='stairs'
+                commands[3] = 0.1
                 commands[4] = 2.0       # step freq
                 commands[9] = 0.30      # footswing height
                 self.yaw_bool = True
-            elif policy==0.0:
+            elif policy==2:             # duck!
                 self.policy='walk'
                 self.yaw_bool = False
+                commands[3] = -0.2
+                commands[4] = 3.0
+                commands[9] = 0.08
+
+            elif policy==0:
+                self.policy='walk'
+                self.yaw_bool = False
+                commands[3] = 0.1
                 commands[4] = 3.0
                 commands[9] = 0.08
 
@@ -251,7 +261,7 @@ class VisionControllerProfile(RCControllerProfile):
 
                 self.yaw_bool=True
 
-                commands[3] = 0.
+                commands[3] = 0.1
                 commands[4] = 2.0       # step freq
                 commands[9] = 0.30      # footswing height
 
@@ -261,7 +271,7 @@ class VisionControllerProfile(RCControllerProfile):
 
                 self.yaw_bool=False
                 
-                commands[3] = 0.
+                commands[3] = 0.1
                 commands[4] = 3.0
                 commands[9] = 0.08
             
@@ -275,12 +285,13 @@ class VisionControllerProfile(RCControllerProfile):
                 commands[4] = 3.0
                 commands[9] = 0.08
 
-
-        # if se_mode==5: #right dpad
-        #     self.use_commandnet=True
-
-        # elif se_mode==7: #left dpad
-        #     self.use_commandnet=False
+            elif se_mode==7: #left dpad
+                if not self.use_commandnet:
+                    self.use_commandnet = True
+                    se_mode = -1
+                else:
+                    self.use_commandnet=False
+                    se_mode = -1
 
         # randomize drifts every 5 seconds
         if self.random_drift and time.time()-self.domain_change_timer>=5.0:

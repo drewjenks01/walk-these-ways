@@ -31,6 +31,7 @@ class RealSense:
     def __init__(self, camera_type, image_type):
         self.camera_type = camera_type      # 'realsense' or '360'
         self.image_type = image_type    # 'rgb' or 'depth'
+        print('Image type:', self.image_type)
 
         self.lc = lcm.LCM("udpm://239.255.76.67:7667?ttl=255")
 
@@ -180,10 +181,10 @@ class RealSense:
 
             camera_imgs = self.capture_realsense_img()
             #print(len(camera_imgs))
-            rs_img_rgb = camera_imgs['Image1st']
             
 
             if self.use_commandnet:
+                rs_img_rgb = camera_imgs['Image1st']
 
                 # check if model memory is filled yet
                 if not self.model.memory_filled:
@@ -214,7 +215,13 @@ class RealSense:
                 torques = self.tau_est
                 joint_vels = self.joint_vel
 
-                demo_data = {'Image1st':rs_img_rgb, 'DepthImg':camera_imgs['DepthImg'] , 'Torque':torques, 'Joint_Vel':joint_vels}
+                demo_data = {'Torque':torques, 'Joint_Vel':joint_vels}
+
+                if self.image_type=='rgb':
+                    demo_data['Image1st'] = camera_imgs['Image1st']
+                
+                elif self.image_type=='depth':
+                    demo_data['DepthImg'] = camera_imgs['DepthImg']
 
                 demo.collect_demo_data(data = demo_data)
 
@@ -249,9 +256,15 @@ class RealSense:
         elif self.camera_type == 'realsense':
             self.rs_pipeline = rs.pipeline()
             config = rs.config()
+            
+            if self.image_type == 'rgb':
+                config.enable_stream(rs.stream.color, 640, 480, rs.format.rgb8, 6)
+                align_to = rs.stream.color
 
-            config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-            config.enable_stream(rs.stream.color, 640, 480, rs.format.rgb8, 30)
+            if self.image_type == 'depth':
+                config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 6)
+                align_to = rs.stream.depth
+            
             profile = self.rs_pipeline.start(config)
 
             align_to = rs.stream.color
@@ -284,20 +297,18 @@ class RealSense:
 
             frames = self.rs_pipeline.wait_for_frames()
             aligned_framed = self.rs_align.process(frames)
-
-            depth_frame = aligned_framed.get_depth_frame()
-            color_frame = aligned_framed.get_color_frame()
-
-            # Convert images to numpy arrays
-            depth_image = np.asanyarray(depth_frame.get_data())
-            color_image = np.asanyarray(color_frame.get_data())
-
-            # copy
-            depth_image = depth_image.copy()
-            color_image = color_image.copy()
-
-            imgs['Image1st'] = color_image
-            imgs['DepthImg'] = depth_image
+            
+            if self.image_type=='rgb':
+                color_frame = aligned_framed.get_color_frame()
+                color_image = np.asanyarray(color_frame.get_data())
+                color_image = color_image.copy()
+                imgs['Image1st'] = color_image
+            
+            elif self.image_type == 'depth':
+                depth_frame = aligned_framed.get_depth_frame()
+                depth_image = np.asanyarray(depth_frame.get_data())
+                depth_image = depth_image.copy()
+                imgs['DepthImg'] = depth_image
 
         return imgs
 
@@ -543,4 +554,5 @@ class RealSense:
 if __name__ == '__main__':
 
     camera_type = 'realsense'
-    rs = RealSense(camera_type=camera_type)
+    image_type = 'rgb'
+    rs = RealSense(camera_type=camera_type, image_type=image_type)

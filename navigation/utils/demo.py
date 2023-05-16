@@ -342,7 +342,7 @@ class Demo:
         ani = animation.ArtistAnimation(fig,movie,interval=100,blit=True)
 
         if self.save_video:
-            ani.save(f'video_run{self.run_num}.mp4',fps=8,bitrate=-1,codec="libx264", dpi=300)
+            ani.save(f'video_run{self.run_num}.mp4',fps=8,bitrate=-1,codec="libx264")
             print('Video saved.')
         plt.show()
 
@@ -623,23 +623,23 @@ class Demo:
 
 if __name__ == "__main__":
 
-    #log_root = f'navigation/robot_demos/jenkins_experiment/'
-    log_root = f'navigation/robot_demos/icra_trials/'
-    log_view_folder = 'combo'
+    log_root = f'navigation/robot_demos/jenkins_experiment/'
+    #log_root = f'navigation/robot_demos/icra_trials/'
+    log_view_folder = 'curr_run'
 
     
     extract = False
-    save_video = True
+    save_video = False
 
     use_nn = False
     use_rgb = True
 
-    runs = [3]
+    runs = [8]
     
     for run in runs:
         demo = Demo(log_root=log_root, log_view_folder = log_view_folder,run_num=run, extract = extract, save_video=save_video, use_nn=use_nn, use_rgb_viewing=use_rgb)
         demo.update_demos()
-        demo.view_video(just_vid=True)
+        demo.view_video()
 
         #demo.view_single(indx=0, save_rgb=True)
         #demo.create_performance_plot()

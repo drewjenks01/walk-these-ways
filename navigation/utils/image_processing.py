@@ -4,77 +4,52 @@ import numpy as np
 from torchvision import transforms
 
 
-def process_realsense(img, check=False, deploy=False, test=False, augment=False, flipped=False):
+def process_image(img):
 
-    if not flipped:
-        # transform to tensor and center crop
-        to_tens =  transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.Resize(240),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            ])
-    else:
-        # flip and transform to tensor and center crop
-        to_tens =  transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.RandomHorizontalFlip(1.0) ,
-            transforms.Resize(240),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            ])
+    #print(img.shape)
+   # img = img[120:,90:270,:]
+
+    # transform to tensor and center crop
+    to_tens =  transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        ])
+
+    processed = to_tens(img)
+
+    return processed
 
 
+def normalize_image(img):
     to_norm= transforms.Compose([
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ]
-    )
+    ])
 
-    img_tens=to_tens(img).cuda()
+    norm_img = to_norm(img)
 
-    if deploy:
-
-        final_img = to_norm(img_tens)
-        return final_img[None,...]
-
-    elif test or not augment:
-        augments = [img_tens]
-
-    else:
-        augments, augment_names = augment_img(img_tens)
-
-    final_imgs = []
-    for im in augments:
-        final_imgs.append(to_norm(im))
-
-    if check:
-        to_pil=transforms.Compose([
-        transforms.ToPILImage()]
-         )
-
-        import matplotlib.pyplot as plt
-        fig, ax = plt.subplots(1,len(final_imgs))
-        fig.suptitle('Image Augmentations')
-
-        for i in range(len(final_imgs)):
-            ax[i].imshow(to_pil(final_imgs[i]))
-            ax[i].set_title(augment_names[i])
-        plt.show()
-
-    del img_tens, img
-
-    return final_imgs
+    return norm_img
 
 
-def augment_img(img,first=False):
+def process_deployed(img):
+
+    processed = process_image(img).cuda()
+    normalized = normalize_image(processed)[None, ...]
+
+    return normalized
+
+def process_depth(img):
+    cv_image_norm = cv2.normalize(img, img, 0, 1, cv2.NORM_MINMAX)
+
+    return cv_image_norm
+
+
+
+def augment_image(img,check=False):
     torch.manual_seed(0)
     torch.cuda.manual_seed(0)
     np.random.seed(0)
-
-    to_pil=transforms.Compose([
-        transforms.ToPILImage()]
-    )
-
     rotate_r = transforms.Compose([
         transforms.RandomRotation(degrees=(5,8))]
     )
@@ -87,10 +62,102 @@ def augment_img(img,first=False):
         transforms.GaussianBlur(5,1)]
     )
 
+    # rand_crop = transforms.Compose([
+    #     transforms.RandomResizedCrop(size=(224,224))]
+    # )
 
-    augments = [img, rotate_r(img), rotate_l(img)]
-    augment_names = ['original','rot_r','rot_l']
+    vert = transforms.Compose([
+        transforms.RandomVerticalFlip(1.0)]
+    )
 
-    return augments, augment_names
+    augments = [rotate_l,rotate_r]
+    augment_names = ['original', 'rl','rr']
 
-    
+    augmented_images = [img]
+
+    for aug in augments:
+        augmented_images.append(aug(img))
+
+
+    # if check:
+    #     to_pil=transforms.Compose([
+    #     transforms.ToPILImage()]
+    #      )
+
+    #     import matplotlib.pyplot as plt
+    #     fig, ax = plt.subplots(1,len(augmented_images))
+    #     fig.suptitle('Image Augmentations')
+
+    #     for b in range(len(augmented_images)):
+    #         ax[b].imshow(to_pil(augmented_images[b]))
+    #         ax[b].set_title(augment_names[b])
+    #     #plt.tight_layout()
+    #     plt.show()
+        
+
+    return augmented_images
+
+def horiz_flip_img(img):
+
+    horiz_flip = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.RandomHorizontalFlip(p=1.0)]
+    )
+
+    hor_img = np.array(horiz_flip(img))
+
+    return hor_img
+
+
+def process_batch(batch, augment, check=False):
+
+    # process each image
+    processed = [[c,process_image(im)] for c,im in batch]
+
+    # augment each image of each batch
+    if augment:
+        aug_processed, augment_names = augment_batch(processed)
+
+        processed += aug_processed
+
+        # normalize each image of each batch
+        normalized = [[[c,normalize_image(im)] for c,im in batch] for batch in processed]
+
+    else:
+         # normalize each image of each batch
+        normalized = [[c,normalize_image(im)] for c,im in processed]
+
+
+
+    if check and augment:
+        to_pil=transforms.Compose([
+        transforms.ToPILImage()]
+         )
+
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(len(normalized),len(normalized[0]))
+        fig.suptitle('Image Augmentations')
+
+        for b in range(len(normalized)):
+            for i in range(len(normalized[b])):
+                ax[b,i].imshow(to_pil(normalized[b][i][1]))
+                ax[b,i].set_title(augment_names[b])
+        #plt.tight_layout()
+        plt.show()
+
+    elif check:
+        to_pil=transforms.Compose([
+        transforms.ToPILImage()]
+         )
+
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(1,len(normalized))
+        fig.suptitle('Image Augmentations')
+
+        for b in range(len(normalized)):
+            ax[b].imshow(to_pil(normalized[b][1]))
+        #plt.tight_layout()
+        plt.show()
+
+
+    return normalized

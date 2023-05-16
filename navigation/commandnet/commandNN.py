@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, Dataset
 import cv2
 from torchvision import transforms
 from copy import deepcopy
-from navigation.utils.image_processing import process_image, img_to_tensor_norm, process_realsense
+from navigation.utils.image_processing import process_batch, horiz_flip_img, process_image, normalize_image, augment_image, process_deployed
 # from torchview import draw_graph
 import gc
 gc.collect()
@@ -29,23 +29,33 @@ CNN that takes in images as input and control commands as output
 
 
 class CustomDataset(Dataset):
-    def __init__(self, data):
+    def __init__(self, data, use_memory):
         self.data = data
+        self.use_memory = use_memory
 
     def __getitem__(self, index):
         row = self.data[index]
-        memory = row[:-1]
-        inp = row[-1]
-        commands = inp[0]
-        image = inp[1]
-        return image, commands, memory
+        commands = row[0]
+        image = row[1]
+        if self.use_memory:
+            memory = row[2]
+            return image, commands, memory
+        else:
+            return image, commands
 
     def __len__(self):
         return len(self.data)
 
 
+class Clip(nn.Module):
+
+    def forward(self, input):
+        output = torch.clip(input, 0.0, 1.0)
+        return output
+
+
 class CommandNet(nn.Module):
-    def __init__(self, model_name, demo_type=None, demo_folder=None, deploy=False, scaled_commands=False, finetune=False, multi_command=False):
+    def __init__(self, model_name, demo_type=None, demo_folder=None, deploy=False, scaled_commands=False, finetune=False, multi_command=False, use_memory=False, use_flipped=False):
         super().__init__()
         self.model_name = model_name
         self.demo_type = demo_type
@@ -53,6 +63,8 @@ class CommandNet(nn.Module):
         self.deploy = deploy
         self.finetune = finetune
         self.multi_command = multi_command
+        self.use_memory = use_memory
+        self.use_flipped = use_flipped
 
         # --------------------------------
         # Filepaths
@@ -61,10 +73,12 @@ class CommandNet(nn.Module):
         train_type = 'finetuned' if self.finetune else 'trained'
 
         self.root_dir = 'navigation/commandnet/runs/run_recent'
-        self.model_path = self.model_save_path = f'{self.root_dir}/{command_type}/{self.demo_folder}/{self.model_name}'
+        self.model_path = f'{self.root_dir}/{command_type}/{self.demo_folder}/{self.model_name}'
         self.model_save_path = f'{self.model_path}/{train_type}.pth'
         self.model_load_path = f'{self.model_path}/trained.pth'
-        if demo_type: self.demo_load_path = f'navigation/robot_demos/{self.demo_folder}/demos.pkl' if demo_type == 'sim' else f'navigation/robot_demos/jenkins_experiment/{self.demo_folder}/runs'
+        self.model_deploy_load_path = f'{self.model_path}/finetuned.pth' if self.finetune else f'{self.model_path}/trained.pth'
+        if demo_type:
+            self.demo_load_path = f'navigation/robot_demos/{self.demo_folder}' if demo_type == 'sim' else f'navigation/robot_demos/jenkins_experiment/{self.demo_folder}/runs'
         self.rescale_path = f'{self.root_dir}/{command_type}/{self.demo_folder}/{self.model_name}/rescales.pkl'
 
         if not os.path.exists(self.model_path):
@@ -82,8 +96,10 @@ class CommandNet(nn.Module):
         self.testdemoloader = None
 
         self.batch_size = 256
-        self.input_h = 240
-        self.input_w = 200
+        if self.deploy:
+            self.batch_size = 1
+        self.input_h = 224
+        self.input_w = 224
 
         self.scale_commands = scaled_commands
         self.data_rescales = []
@@ -91,7 +107,7 @@ class CommandNet(nn.Module):
             with open(self.rescale_path, 'rb') as f:
                 self.data_rescales = pkl.load(f)
 
-        self.visualize_data = False
+        self.visualize_data = True
         self.visualize_model = False
         if self.deploy:
             self.visualize_data = False
@@ -104,10 +120,15 @@ class CommandNet(nn.Module):
         self.policy_loss = nn.BCELoss()
 
         if self.finetune:
-            self.lr = 2e-4
+            self.lr = 6e-5
+            self.epochs = 12
+            # self.batch_size=64
+            self.weight_decay = 1e-3
         else:
-            self.lr = 5e-3
-        self.epochs = 30
+            self.lr = 3e-3
+            self.main_lr = 2e-4
+            self.epochs = 12
+            self.weight_decay = 2e-3
 
         # --------------------------------
         # DEFINE NEURAL NETS
@@ -120,86 +141,120 @@ class CommandNet(nn.Module):
             from torchvision.models import resnet18, ResNet
             self.commandnet = resnet18(pretrained=not self.deploy)
             self.commandnet.fc = nn.Identity()
-            self.memory_input_shape = 512
+            self.fc_input_shape = 512
         elif self.model_name == 'resnet34':
             from torchvision.models import resnet34
             self.commandnet = resnet34(pretrained=not self.deploy)
             self.commandnet.fc = nn.Identity()
-            self.memory_input_shape = 512
+            self.fc_input_shape = 512
         elif self.model_name == 'resnet50':
             from torchvision.models import resnet50
             self.commandnet = resnet50(pretrained=not self.deploy)
             self.commandnet.fc = nn.Identity()
-            self.memory_input_shape = 2048
+            self.fc_input_shape = 2048
         elif self.model_name == 'mnv3s':
             from torchvision.models import mobilenet_v3_small
             self.commandnet = mobilenet_v3_small(pretrained=not self.deploy)
-            del self.commandnet.classifier[3]
-            self.memory_input_shape = 1024
+            self.commandnet.classifier = nn.Identity()
+            # print(self.commandnet)
+            self.fc_input_shape = 576
         elif self.model_name == 'mnv3l':
             from torchvision.models import mobilenet_v3_large
             self.commandnet = mobilenet_v3_large(pretrained=not self.deploy)
-            del self.commandnet.classifier[3]
-            self.memory_input_shape = 1280
-        elif self.model_name == 'enb3':
-            from torchvision.models import efficientnet_b3
-            self.commandnet = efficientnet_b3(pretrained=not self.deploy)
             self.commandnet.classifier = nn.Identity()
-            print(self.commandnet)
-            self.memory_input_shape = 1536
+            self.fc_input_shape = 960
+        elif self.model_name == 'enb0':
+            from torchvision.models import efficientnet_b0
+            self.commandnet = efficientnet_b0(pretrained=not self.deploy)
+            self.commandnet.classifier = nn.Identity()
+            self.fc_input_shape = 1280
+        elif self.model_name == 'regnet':
+            from torchvision.models import regnet_y_400mf
+            self.commandnet = regnet_y_400mf(pretrained=not self.deploy)
+            self.commandnet.fc = nn.Identity()
+            self.fc_input_shape = 440
 
-        # memory layer to reduce dimensionality
-        self.memory_output_shape = 250
-        self.models['memory'] = nn.Sequential([
-            nn.Linear(self.memory_input_shape, self.memory_output_shape),
-            nn.ReLU()
-        ])
+        elif self.model_name == 'shuffle':
+            from torchvision.models import shufflenet_v2_x1_0
+            self.commandnet = shufflenet_v2_x1_0(pretrained=not self.deploy)
+            self.commandnet.fc = nn.Identity()
+            self.fc_input_shape = 440
+
+        # print(self.commandnet)
 
          # memory
-        self.batch_memory=torch.empty(shape=(0,self.memory_output_shape+5))
-        self.memory_filled=False
-        self.memory_size = 9
+        if self.use_memory:
+            self.batch_memory = None
+            self.memory_filled = False
+            self.memory_size = 9
+            # adapt fc_input_size based on memory size -> conv embedding * mem size + num comms * mem size
+            self.mem_output_shape = 50
+            self.fill_curr = 0
 
-        # adapt fc_input_size based on memory size -> conv embedding * mem size + num comms * mem size
-        self.fc_input_shape = self.memory_output_shape*self.memory_size + 5*self.memory_size
-
-
-        self.policy_layer = nn.Sequential(
-            nn.Linear(self.fc_input_shape, 1, bias=True),
-            nn.Sigmoid()
-        )
-
+            self.models['memory'] = nn.Sequential(
+                nn.Linear(self.fc_input_shape, 250),
+                nn.ReLU(),
+                # nn.Dropout(),
+                nn.Linear(250, self.mem_output_shape)
+            )
+            self.fc_input_shape = self.mem_output_shape * \
+                (self.memory_size+1)+4*(self.memory_size)
+            self._reset_memory()
 
         # add all models
         self.models['main'] = self.commandnet
+
+        self.gaits = ['x', 'y', 'yaw', 'policy']
 
         if self.multi_command:
 
             # make final layers
             self.command_layer = nn.Sequential(
-                nn.Linear(self.fc_input_shape, 1, bias=True)
+                nn.Linear(self.fc_input_shape, 16),
+                nn.ReLU(),
+                nn.Linear(16, 8),
+                nn.ReLU(),
+                nn.Linear(8, 1)
             )
 
             x = deepcopy(self.command_layer)
             y = deepcopy(self.command_layer)
             yaw = deepcopy(self.command_layer)
-            leg = deepcopy(self.command_layer)
-            step = deepcopy(self.command_layer)
+            if demo_folder == 'duck':
+                body_height = deepcopy(self.command_layer)
+                self.models['body'] = body_height
+                self.gaits.append('body')
+
+            policy = nn.Sequential(
+                nn.Linear(self.fc_input_shape, 16),
+                # nn.Dropout(),
+                nn.ReLU(),
+                nn.Linear(16, 8),
+                # nn.Dropout(),
+                nn.ReLU(),
+                nn.Linear(8, 1),
+                nn.Sigmoid()
+            )
 
             self.models['x'] = x
             self.models['y'] = y
             self.models['yaw'] = yaw
-            self.models['leg'] = leg
-            self.models['step'] = step
+            self.models['policy'] = policy
 
         else:
             # make final layers
             self.command_layer = nn.Sequential(
-                nn.Linear(self.fc_input_shape, 5, bias=True)
+                nn.Dropout(),
+                nn.Linear(self.fc_input_shape, 3),
             )
-            self.models['commands'] = self.command_layer
 
-        self.models['policy'] = self.policy_layer
+            comm = deepcopy(self.command_layer)
+            pol = deepcopy(self.command_layer)
+            self.models['commands'] = comm
+            self.models['policy'] = nn.Sequential(
+                nn.Linear(self.fc_input_shape, 1),
+                nn.Sigmoid()
+            )
 
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")  # PyTorch v0.4.0
@@ -207,25 +262,45 @@ class CommandNet(nn.Module):
         for model_type in self.models:
             self.models[model_type].to(self.device)
 
-
         # freeze main NN
         if not self.deploy:
             for p in self.models['main'].parameters():
                 p.requires_grad = False
 
+            # for p in self.models['main'].layer3.parameters():
+            #         p.requires_grad = True
+
+            # for p in self.models['main'].layer4.parameters():
+            #     p.requires_grad = True
+
             # unfreeze some layers if finetuning. TODO: freeze BatchNorms
             if self.finetune:
                 print('Finetuning!')
                 self.load_trained()
+                # for p in self.models['main'].parameters():
+                #     p.requires_grad = True
 
-                for p in self.models['main'].layer2.parameters():
-                    p.requires_grad = True
+            #     if self.mode
+            #     for p in self.models['main'].layer2.parameters():
+            #         p.requires_grad = True
 
-                for p in self.models['main'].layer3.parameters():
-                    p.requires_grad = True
+            #    # print(self.models['main'].layer2)
 
-                for p in self.models['main'].layer4.parameters():
-                    p.requires_grad = True
+                # for p in self.models['main'].layer3.parameters():
+                #     p.requires_grad = True
+
+                # for p in self.models['main'].layer4.parameters():
+                #     p.requires_grad = True
+
+                chil = list(self.models['main'].children())
+
+                conv_chil = list(chil[0].children())
+
+                print(conv_chil[-3:])
+
+                for c in conv_chil[-6:]:
+                    for p in c.parameters():
+                        p.requires_grad = True
 
             # defines full model and opts
             self.opts = []
@@ -241,7 +316,6 @@ class CommandNet(nn.Module):
 
             self.load_trained()
 
-
         # --------------------------------
         # DEFINE OUTPUTS
         # --------------------------------
@@ -250,60 +324,101 @@ class CommandNet(nn.Module):
         # # draw_graph(self, input_size=(self.batch_size,self.input_channels, self.input_h, self.input_w), device=self.device,
         #                 save_graph=True, filename='CommandNet_graph',directory='navigation/commandnet/graph/')
 
-
-        print(f'PARAMETER SUMMARY\n \
-                Batch size: {self.batch_size}     Model Name: {self.model_name}\n \
-                LR: {self.lr}         Epochs: {self.epochs} \
-                Demo type: {self.demo_type}    Demo folder: {self.demo_folder}\n \
+        print(f'PARAMETER SUMMARY \n \
+                Batch size: {self.batch_size}\n \
+                Model Name: {self.model_name}\n \
+                Scaled: {self.scale_commands}\n \
+                Multi: {self.multi_command}\n \
+                LR: {self.lr}         \n \
+                Epochs: {self.epochs} \n \
+                Demo type: {self.demo_type}    \n \
+                Demo folder: {self.demo_folder}\n \
                 -----------------------------------------')
 
-    def forward(self, input):
+    def forward(self, input, mem_comms=[]):
+        with torch.set_grad_enabled(not self.deploy):
 
-        # images through main layer
-        output = self.models['main'](input)
+            # images through main layer
+            output = self.models['main'](input)
 
-        # put output through mem layer
-        output = self.models['memory'] (output)
+            if self.use_memory:
 
-        # add data to memory
-        mem = torch.cat((output, input)).flatten()
-        self.batch_memory = torch.cat((self.batch_memory,mem))
+                # compress conv embeddding
+                memory_embedding = self.models['memory'](output)
 
-        # check if memory not filled
-        if not self.memory_filled:
+                # if memory not full, add train commands or temp 0's
+                if not self.deploy and not self.memory_filled:
 
-            # check if memory at capacity
-            if len(self.batch_memory) == self.memory_size:
-                print('Memory filled! Beginning inference.')
-                self.memory_filled = True
+                    # add commands to mem embedding
+                    comb_embedding = torch.concat(
+                        (memory_embedding, mem_comms), dim=-1).reshape(self.batch_size, 1, -1)
 
-            # return nothing
-            return None, None
+                    # add full embedding to memory
+                    self._add_to_memory(comb_embedding)
 
-        # make new output the flatten conv embeddings
-        output = self.batch_memory.flatten()
+                    if self.batch_memory.shape[1] == self.memory_size:
+                        self.memory_filled = True
 
-        #output = nn.Dropout(0.5)(output)
+                    # return None
+                    return None
 
-        # output through command regression layer
-        if self.multi_command:
-            x = self.models['x'](output)
-            y = self.models['y'](output)
-            yaw = self.models['yaw'](output)
+                elif self.deploy and self.fill_curr != self.memory_size:
 
-            commands = torch.concat((x, y, yaw), dim=1)
+                    # add commands to mem embedding
+                    if self.fill_curr == 0:
+                        mem_comms = self.get_memory_zero_comm(
+                            tens=True).float()
+                        comb_embedding = torch.concat(
+                            (memory_embedding, mem_comms), dim=-1).reshape(self.batch_size, 1, -1)
 
-        else:
-            commands = self.models['commands'](output)
+                        # add full embedding to memory
+                        self._add_to_memory(comb_embedding)
 
+                    # fill memory
+                    self._fill_memory()
 
-        # output through policy classification layer
-        policy = self.models['policy'](output)
+                # get flattened memory
+                flat_memory = self.batch_memory.flatten(1)
 
-        # remove first element from memory
-        self.batch_memory = self.batch_memory[1:] 
+                # add memory embedding
+                flat_memory = torch.concat(
+                    (flat_memory, memory_embedding), dim=1)
+                output = flat_memory
 
-        return commands, policy
+            # pass through dropout
+            # if not self.deploy: output = nn.Dropout(0.25)(output)
+
+            # output through command regression layer
+            if self.multi_command:
+                x = self.models['x'](output)
+                y = self.models['y'](output)
+                yaw = self.models['yaw'](output)
+
+                policy = self.models['policy'](output)
+
+                commands = [x, y, yaw]
+
+                if self.demo_folder == 'duck':
+                    body = self.models['body']
+                    commands.append(body)
+
+            else:
+                commands = self.models['commands'](output)
+                policy = self.models['policy'](output)
+                # policy = commands[:,-1].reshape(-1,1)
+                # commands = commands[:,:-1]
+
+            # remove first element from memory and add comms
+            if self.deploy and self.use_memory:
+
+                command_concat = torch.concat((x, y, yaw), dim=1)
+                # add comms to flat memory embedding
+                comb_embedding = torch.concat(
+                    (memory_embedding, command_concat, policy), dim=1).reshape(self.batch_size, 1, -1)
+
+                self._add_to_memory(comb_embedding)
+
+            return commands, policy
 
     def train_model(self):
         from tqdm import tqdm
@@ -313,80 +428,111 @@ class CommandNet(nn.Module):
         for model_type in self.models:
             self.models[model_type].train()
 
-        loss_log = {'x_vel': [], 'y_vel': [], 'yaw': [],
-                    'height': [], 'freq': [], 'policy': [], 'total': []}
-        test_loss = {'x_vel': [], 'y_vel': [], 'yaw': [],
-                     'height': [], 'freq': [], 'policy': [], 'total': []}
-        str_log = {'x_vel': [0, 0], 'y_vel': [0, 0], 'yaw': [0, 0], 'height': [
-            0, 0], 'freq': [0, 0], 'policy': [0, 0], 'total': [0, 0]}
+        loss_log = {g: [] for g in self.gaits}
+        loss_log['total'] = []
+
+        test_loss = {g: [] for g in self.gaits}
+        test_loss['total'] = []
+
+        str_log = {g: [0, 0] for g in self.gaits}
+        str_log['total'] = [0, 0]
 
         print('START TRAINING')
         for epoch in range(self.epochs):
+            torch.cuda.empty_cache()
 
-            total_train_loss = {'x_vel': [], 'y_vel': [], 'yaw': [
-            ], 'height': [], 'freq': [], 'policy': [], 'total': []}
+            total_train_loss = {g: [] for g in self.gaits}
+            total_train_loss['total'] = []
 
-            for idx, (image, targets,memory) in tqdm(enumerate(trainloader)):
+            for idx, info in tqdm(enumerate(trainloader)):
+
+                if self.use_memory:
+                    (image, targets, memory) = info
+                else:
+                    (image, targets) = info
 
                 targets = targets.to(self.device)
+                image = image.to(self.device)
                 image = image.float()
                 targets = targets.float()
 
-                # reset batch mem
-                self._reset_memory()
-
-                # fill memory
-                for idx, (mem_image, mem_targets) in tqdm(enumerate(memory)):
-                    mem_image = mem_image.float()
-                    self.forward(mem_image)
-
-
                 command_targets = targets[:, :-1]
                 policy_targets = targets[:, -1].reshape(-1, 1)
+
+                if self.use_memory:
+
+                    # reset batch mem
+                    self._reset_memory()
+
+                    # fill memory
+                    for i in range(self.memory_size):
+                        mem_comms, mem_image = memory[i]
+                        mem_comms = mem_comms.to(self.device)
+                        mem_comms = mem_comms.float()
+                        mem_image = mem_image.to(self.device)
+                        mem_image = mem_image.float()
+                        self.forward(mem_image, mem_comms)
+
+                    if not self.memory_filled:
+
+                        self._fill_memory()
+
+                    assert self.memory_filled == True, 'Memory not filled'
 
                 for opt in self.opts:
                     opt.zero_grad(set_to_none=True)
 
                 commands, policy = self.forward(image)
 
-                # calc individual loss to be able to track progress
-                ind_loss = [self.loss_func(
-                    commands[:, i], command_targets[:, i]) for i in range(commands.shape[1])]
-                policy_loss = self.policy_loss(policy, policy_targets)
+                if self.multi_command:
+                    ind_loss = [self.loss_func(
+                        commands[i], command_targets[:, i].reshape(-1, 1)) for i in range(len(commands))]
 
-                # calc true loss all together
-                loss = self.loss_func(commands, command_targets)+policy_loss
+                    policy_loss = self.policy_loss(policy, policy_targets)
+                    ind_loss.append(policy_loss)
 
-                total_train_loss['x_vel'].append(ind_loss[0].item())
-                total_train_loss['y_vel'].append(ind_loss[1].item())
-                total_train_loss['yaw'].append(ind_loss[2].item())
-                total_train_loss['height'].append(ind_loss[3].item())
-                total_train_loss['freq'].append(ind_loss[4].item())
-                total_train_loss['policy'].append(policy_loss.item())
+                    loss = sum(ind_loss)
 
-                total_train_loss['total'].append(loss.item())
+                else:
+                    ind_loss = [self.loss_func(
+                        commands[:, i], command_targets[:, i]) for i in range(commands.shape[1])]
+
+                    policy_loss = self.policy_loss(policy, policy_targets)
+                    ind_loss.append(policy_loss)
+
+                    comm_loss = self.loss_func(commands, command_targets)
+
+                    loss = comm_loss+policy_loss
 
                 loss.backward()
                 for opt in self.opts:
                     opt.step()
 
-                del image, targets, command_targets, policy_targets, ind_loss, policy_loss, loss
+                for ind, g in enumerate(self.gaits):
+                    total_train_loss[g].append(ind_loss[ind].item())
+
+                total_train_loss['total'].append(loss.item())
+
+                del image, targets, ind_loss, loss
 
             for l in total_train_loss:
                 loss_log[l].append(np.mean(total_train_loss[l]))
 
             val_loss = self.evaluate(testloader)
+
             for l in val_loss:
                 test_loss[l].append(np.mean(val_loss[l]))
                 str_log[l][1] = val_loss[l][-1]-val_loss[l][0]
                 str_log[l][0] = val_loss[l][-1]
 
+            # if epoch % 5==0:
+            #     self._save_model_plots(loss_log, test_loss)
             for model_type in self.models:
                 self.models[model_type].train()
 
             print("\n [INFO] EPOCH: {}/{}".format(epoch + 1, self.epochs))
             print(
-                f"Train loss: {round(loss_log['total'][-1],4)} Val loss: {round(test_loss['total'][-1],4)}\nTestCommands: {[round(str_log[l][0],4) for l in str_log]}")
+                f"Train loss: {round(loss_log['total'][-1],4)} Val loss: {round(test_loss['total'][-1],4)}\nTest Commands: {[round(test_loss[l][-1],4) for l in str_log]}")
            # print(f"Train loss: {round(loss_log['total'][-1],4)} Val loss: {round(test_loss['total'][-1],4)}")
 
         self._save_all_models_()
@@ -409,98 +555,121 @@ class CommandNet(nn.Module):
 
         with torch.no_grad():
 
-            eval_log = {'x_vel': [], 'y_vel': [], 'yaw': [],
-                        'height': [], 'freq': [], 'policy': [], 'total': []}
+            eval_log = {g: [] for g in self.gaits}
+            eval_log['total'] = []
 
-            for iter, (image, targets, memory) in enumerate(data):
+            for iter, info in enumerate(data):
 
-                # reset batch mem
-                self._reset_memory()
-
-                # fill memory
-                for idx, (mem_image, mem_targets) in enumerate(memory):
-                    mem_image = mem_image.float()
-                    self.forward(mem_image)
+                if self.use_memory:
+                    (image, targets, memory) = info
+                else:
+                    (image, targets) = info
 
                 image = image.float()
+                image = image.to(self.device)
                 targets = targets.to(self.device)
                 targets = targets.float()
                 command_targets = targets[:, :-1]
                 policy_targets = targets[:, -1].reshape(-1, 1)
 
+                if self.use_memory:
+
+                    # reset batch mem
+                    self._reset_memory()
+
+                    # fill memory
+                    for i in range(self.memory_size):
+                        mem_comms, mem_image = memory[i]
+                        mem_comms = mem_comms.to(self.device)
+                        mem_comms = mem_comms.float()
+                        mem_image = mem_image.to(self.device)
+                        mem_image = mem_image.float()
+                        self.forward(mem_image, mem_comms)
+
+                    if not self.memory_filled:
+
+                        self._fill_memory()
+
+                    assert self.memory_filled == True, 'Memory not filled'
+
                 commands, policy = self.forward(image)
+                if self.multi_command:
+                    ind_loss = [self.loss_func(
+                        commands[i], command_targets[:, i].reshape(-1, 1)) for i in range(len(commands))]
 
-                # calc individual loss to be able to track progress
-                ind_loss = [self.loss_func(
-                    commands[:, i], command_targets[:, i]) for i in range(commands.shape[1])]
-                policy_loss = self.policy_loss(policy, policy_targets)
+                    policy_loss = self.policy_loss(policy, policy_targets)
+                    ind_loss.append(policy_loss)
 
-                # calc true loss all together
-                loss = self.loss_func(commands, command_targets)+policy_loss
+                    loss = sum(ind_loss)
 
-                eval_log['x_vel'].append(ind_loss[0].item())
-                eval_log['y_vel'].append(ind_loss[1].item())
-                eval_log['yaw'].append(ind_loss[2].item())
-                eval_log['height'].append(ind_loss[3].item())
-                eval_log['freq'].append(ind_loss[4].item())
-                eval_log['policy'].append(policy_loss.item())
+                else:
+                    ind_loss = [self.loss_func(
+                        commands[:, i], command_targets[:, i]) for i in range(commands.shape[1])]
+
+                    policy_loss = self.policy_loss(policy, policy_targets)
+                    ind_loss.append(policy_loss)
+
+                    comm_loss = self.loss_func(commands, command_targets)
+
+                    loss = comm_loss+policy_loss
+
+                for ind, g in enumerate(self.gaits):
+                    eval_log[g].append(ind_loss[ind].item())
 
                 eval_log['total'].append(loss.item())
 
-                del commands, policy, loss, ind_loss
+                del commands, loss, ind_loss
 
         return eval_log
 
     def evaluate_full_demo(self):
         data = self.testdemoloader
+        self.batch_size = data.batch_size
+        self.deploy = True
         for model_type in self.models:
             self.models[model_type].eval()
 
         # reset batch mem
-        self._reset_memory()
+        if self.use_memory:
+            self._reset_memory()
 
         with torch.no_grad():
 
-            preds = {'x_vel': [], 'y_vel': [], 'yaw': [],
-                     'height': [], 'freq': [], 'policy': []}
-            labels = {'x_vel': [], 'y_vel': [], 'yaw': [],
-                      'height': [], 'freq': [], 'policy': []}
+            preds = {g: [] for g in self.gaits}
+            labels = {g: [] for g in self.gaits}
 
             for iter, (image, targets) in enumerate(data):
 
+                image = image.to(self.device)
                 image = image.float()
                 targets = targets.to(self.device)
                 targets = targets.float()
 
                 targets = targets.reshape(-1).detach().tolist()
 
-                command_targets = targets[:-1]
-                policy_targets = targets[-1]
-
                 # if memory not filled yet then fill and continue
-                if not self.memory_filled:
+                if self.use_memory and not self.memory_filled:
+
                     self.forward(image)
+                    # self._fill_memory()
                     continue
                 else:
                     commands, policy = self.forward(image)
 
-
-                commands = commands.reshape(-1).detach().tolist()
+                # commands,policy = self._data_rescale(commands, policy)
+                if self.multi_command:
+                    for i in range(len(commands)):
+                        commands[i] = commands[i].detach().item()
+                else:
+                    commands = commands.reshape(-1).detach().tolist()
                 policy = policy.detach().item()
 
-                preds['x_vel'].append(commands[0])
-                preds['y_vel'].append(commands[1])
-                preds['yaw'].append(commands[2])
-                preds['height'].append(commands[3])
-                preds['freq'].append(commands[4])
-                preds['policy'].append(policy)
+                commands = list(commands)
+                commands.append(policy)
 
-                labels['x_vel'].append(command_targets[0])
-                labels['y_vel'].append(command_targets[1])
-                labels['yaw'].append(command_targets[2])
-                labels['height'].append(command_targets[3])
-                labels['freq'].append(command_targets[4])
-                labels['policy'].append(policy_targets)
+                for ind, g in enumerate(self.gaits):
+                    preds[g].append(commands[ind])
+                    labels[g].append(targets[ind])
 
         return preds, labels
 
@@ -520,176 +689,342 @@ class CommandNet(nn.Module):
         test_images = []
         print('Extracted demos...')
 
-        if self.demo_type == 'robot':
-            for i in tqdm(range(num_runs)):
-                log_files = sorted([str(p) for p in Path(self.demo_load_path+f'/run{i+1}').glob(
-                    "*.pkl")], key=lambda x: int(x.split('/')[-1].split('.')[0][3:]))
+        # ------------------------
+        # DATA EXTRACTION
+        # ------------------------
+        for i in tqdm(range(num_runs)):
+            log_files = sorted([str(p) for p in Path(self.demo_load_path+f'/run{i+1}').glob(
+                "*.pkl")], key=lambda x: int(x.split('/')[-1].split('.')[0][3:]))
 
-                for log in log_files:
-                    with gzip.open(log, 'rb') as f:
-                        p = pickle.Unpickler(f)
-                        demo = p.load()
-                        for k in demo:
+            if i == 0:
+                print(log_files)
 
-                            if k == 'Commands':
-                                if i == 0:
-                                    test_comms += demo[k]
-                                else:
-                                    comms += demo[k]
-                            elif k == 'Image1st':
-                                if i == 0:
-                                    test_images += demo[k]
-                                else:
-                                    images += demo[k]
+            for log in log_files:
+                with gzip.open(log, 'rb') as f:
+                    p = pickle.Unpickler(f)
+                    demo = p.load()
+                    for k in demo:
 
-        elif self.demo_type == 'sim':
-            with gzip.open(self.demo_load_path, 'rb') as f:
-                p = pickle.Unpickler(f)
-                df = p.load()
+                        if k == 'Commands':
+                            if i in [0]:
+                                test_comms += demo[k]
+                            else:
+                                comms += demo[k]
+                        elif k == 'Image1st':
+                            if i in [0]:
+                                test_images += demo[k]
+                            else:
+                                images += demo[k]
 
-            print(f'Training with {len(df)} demos')
+        print('Original train & test length:', len(comms), len(test_comms))
+        # ------------------------
+        # Horiz Flipping
+        # ------------------------
+        if self.use_flipped:
+            flipped_imgs = []
+            flipped_test_imgs = []
+            flipped_comms = []
+            flipped_test_comms = []
+            print('Flipping images...')
 
-            for r in range(len(df)):
-                row = df.iloc[r].to_numpy()
+            for i in tqdm(range(len(comms))):
 
-                if r == 0:
-                    for i in range(len(row[0])):
-                        test_comms.append(row[0][i])
-                        test_images.append(row[1][i][:,:,:3])
+                if abs(comms[i][2]) >= 0.25:
 
-                else:
-                    for i in range(len(row[0])):
-                        comms.append(row[0][i])
-                        images.append(row[1][i][:,:,:3])
+                    horiz = horiz_flip_img(images[i])
+
+                    flipped_imgs.append(horiz)
+                    c = comms[i]
+                    flip_y = -1*c[1]
+                    flip_yaw = -1*c[2]
+                    flipped_comms.append([c[0], flip_y, flip_yaw, c[3]])
+
+            for i in tqdm(range(len(test_comms))):
+
+                if abs(test_comms[i][2]) >= 0.25:
+
+                    horiz = horiz_flip_img(test_images[i])
+
+                    flipped_test_imgs.append(horiz)
+                    c_t = test_comms[i]
+                    flip_y = -1*c_t[1]
+                    flip_yaw = -1*c_t[2]
+                    flipped_test_comms.append(
+                        [c_t[0], flip_y, flip_yaw, c_t[3]])
+
+            # self.plot_data([flipped_comms[0], flipped_imgs[0]],'flip')
+
+            comms += flipped_comms
+            test_comms += flipped_test_comms
+            images += flipped_imgs
+            test_images += flipped_test_imgs
+
+            print('Flipped train & test length:', len(comms), len(test_comms))
 
         comms = np.array(comms)
+        test_comms = np.array(test_comms)
+
+        # remove gait params
+        print(comms.shape)
+        # comms = np.delete(comms, [3,4], axis=1)
+        # test_comms = np.delete(test_comms,[3,4], axis=1)
+
         original_comms = deepcopy(comms)
 
         images = np.array(images)
         test_images = np.array(test_images)
 
-        test_comms = np.array(test_comms)
         original_test_comms = deepcopy(test_comms)
 
-        print('Shapes', comms.shape, images.shape,
-              test_comms.shape, test_images.shape)
+        # ------------------------
+        # DATA SCALING
+        # ------------------------
 
         if self.scale_commands:
+            print('Scaling commands...')
 
-            min = comms.min(axis=0)
-            ptp = comms.ptp(axis=0)
-            self.data_rescales = [min, ptp]
+            all_comms = np.concatenate((comms, test_comms), axis=0)
+            print('all combs:', all_comms.shape)
 
-            comms = (comms-min)/ptp
-            test_comms = (test_comms-min)/ptp
+            mini = all_comms.min(axis=0)
+            ptp = all_comms.ptp(axis=0)
+            self.data_rescales = [mini, ptp]
+            print('rescales:', self.data_rescales)
 
-            for i in range(len(self.data_rescales[1])):
+            for i in range(len(self.data_rescales[0])):
+                comms[:, i] = (comms[:, i]-mini[i])/ptp[i]
+                test_comms[:, i] = (test_comms[:, i]-mini[i])/ptp[i]
+
                 if self.data_rescales[1][i] == 0.0:
                     comms[:, i] = original_comms[:, i]
-                    test_comms[:, 1] = original_test_comms[:, 1]
+                    test_comms[:, i] = original_test_comms[:, i]
+
+                print(max(comms[:, i].flatten()), min(comms[:, i].flatten()))
+                print(max(test_comms[:, i].flatten()),
+                      min(test_comms[:, i].flatten()))
 
         print('Orignal dataset:', comms.shape, images.shape,
               test_comms.shape, test_images.shape)
 
-        # new full numpy array with everything extracted
-        print('Augmenting and processing images...')
-        extracted_data = []
-        checked = False
+        # test_unbatched = []
+        # for i in range(len(test_comms)):
+        #     test_unbatched.append([test_comms[i], test_images[i]])
 
-        for e in tqdm(range(len(comms))):
-            original_img = images[e]
+        # self.plot_data(test_unbatched[0], 'test unbatched')
 
-            flipped_img = deepcopy(original_img)
-            rev_comms = deepcopy(comms[e])
-            rev_comms[1] *= -1
-            rev_comms[2] *= -1
+        # ------------------------
+        # IMAGE PROCESSING
+        # ------------------------
+        processed_train = []
+        print('Processing train images...')
+        for i in tqdm(range(len(images))):
+            processed_img = process_image(images[i])
 
-        # original image
-            if not checked:
-                augmented = process_realsense(
-                    img=original_img, check=self.visualize_data, augment=True)
-                rev_augmented = process_realsense(
-                    img=flipped_img, check=self.visualize_data, augment=True, flipped=True)
-                checked = True
+            processed_train.append([comms[i], processed_img])
+
+        processed_test = []
+        print('Processing test images...')
+        for i in tqdm(range(len(test_images))):
+            processed_img = process_image(test_images[i])
+
+            processed_test.append([test_comms[i], processed_img])
+
+        # for i in tqdm(range(len(test_unbatched))):
+        #     processed_img = normalize_image(process_image(test_unbatched[i][1]))
+
+        #     test_unbatched[i][1] = processed_img
+
+        test_unbatched = deepcopy(processed_test)
+
+        del comms, test_comms, images, test_images, original_comms, original_test_comms
+
+        print('Process length:', len(processed_train), len(processed_test[0]))
+        print('test unbatched: ', len(test_unbatched))
+
+        # self.plot_data(deepcopy(processed_train[0]), 'processed train', pil=True)
+
+        # ------------------------
+        # IMAGE AUGMENTATION & Normalization
+        # ------------------------
+        print('Augmenting and Normalizing train images...')
+        augmented_train = []
+        for i in tqdm(range(len(processed_train))):
+            processed_img = processed_train[i][1]
+            comm = processed_train[i][0]
+
+            batch = []
+
+            if i == 0:
+                augmented_imgs = augment_image(processed_img, check=True)
             else:
-                augmented = process_realsense(img=original_img, augment=True)
-                rev_augmented = process_realsense(
-                    img=flipped_img, augment=True, flipped=True)
+                augmented_imgs = augment_image(processed_img)
 
-            for i in range(len(augmented)):
-                extracted_data.append([comms[e], augmented[i]])
-                extracted_data.append([rev_comms,rev_augmented[i]])
+            for im in augmented_imgs:
+                norm_img = normalize_image(im)
+                batch.append([comm, norm_img])
 
-            torch.cuda.empty_cache()
+            augmented_train.append(batch)
 
-        del comms, images
-        if self.visualize_data:
-            self._visualize_robot_dataset_(original_comms, extracted_data)
+        # del processed_train
 
-        extracted_test = []
-        for e in range(len(test_comms)):
-            if e == 0:
-                augmented = process_realsense(img=test_images[e], test=True)
+        print('Augmenting test images...')
+        augmented_test = []
+        for i in tqdm(range(len(processed_test))):
+            processed_img = processed_test[i][1]
+            comm = processed_test[i][0]
+
+            batch = []
+
+            if i == 0:
+                augmented_imgs = augment_image(processed_img, check=True)
             else:
-                augmented = process_realsense(img=test_images[e], test=True)
+                augmented_imgs = augment_image(processed_img)
+            for im in augmented_imgs:
+                norm_img = normalize_image(im)
+                batch.append([comm, norm_img])
 
-            for im in augmented:
-                extracted_test.append([test_comms[e], im])
+            augmented_test.append(batch)
 
-        del test_comms, test_images
+        for i in range(len(test_unbatched)):
+            norm = normalize_image(test_unbatched[i][1])
+            test_unbatched[i][1] = norm
 
+        del processed_test
 
-        # create batches of 10 -> (N, 10, comm, im)
-        batched_extracted_data = []
-        batch=[]
-        print('Batching...')
-        for i in range(len( extracted_data)):
-            batch.append(extracted_data[i])
+        print(
+            f'Augmented lengths: {len(augmented_train)}, {len(augmented_train[0])}')
 
-            while len(batch)==10:
-                batch_copy = deepcopy(batch)
-                batched_extracted_data.append(batch_copy)
-                batch.pop(0)
+        # self.plot_data(deepcopy(augmented_train[0][0]), 'aug train', pil=True)
 
-        del batch, batch_copy, extracted_data
+        # ------------------------
+        # Add memory to data
+        # ------------------------
+        if self.use_memory:
+            print('Adding memory info to train data...')
+            train_memory = []
 
-        batched_extracted_test = []
-        batch_test=[]
-        for i in range(len( extracted_test)):
-            batch_test.append(extracted_test[i])
+            for i in tqdm(range(len(augmented_train[0]))):
 
-            while len(batch_test)==10:
-                batch_copy = deepcopy(batch_test)
-                batched_extracted_test.append(batch_copy)
-                batch_test.pop(0)
+                for j in range(1, len(augmented_train)):
 
+                    memory_info = []
 
-        np.random.shuffle(batched_extracted_data)
-        np.random.shuffle(batched_extracted_test)
+                    for k in range(j-self.memory_size, j):
+                        if k > 0:
+                            memory_info.append(
+                                [augmented_train[k][i][0], augmented_train[k][i][1]])
+                        elif k == 0:
+                            zero_comm = self.get_memory_zero_comm(tens=False)
+                            memory_info.append(
+                                [zero_comm, augmented_train[k][i][1]])
 
-        train = batched_extracted_data
-        test = batched_extracted_test
+                    while len(memory_info) != self.memory_size:
+                        cop = deepcopy(memory_info[-1])
+                        memory_info.append(cop)
+
+                    data_point = [augmented_train[j][i][0],
+                                  augmented_train[j][i][1], memory_info]
+                    train_memory.append(data_point)
+
+            del augmented_train
+
+            print('Adding memory info to test data...')
+            test_memory = []
+            for i in tqdm(range(len(augmented_test[0]))):
+
+                for j in range(1, len(augmented_test)):
+
+                    memory_info = []
+
+                    for k in range(j-self.memory_size, j):
+                        if k > 0:
+                            memory_info.append(
+                                [augmented_test[k][i][0], augmented_test[k][i][1]])
+                        elif k == 0:
+                            zero_comm = self.get_memory_zero_comm(tens=False)
+                            memory_info.append(
+                                [zero_comm, augmented_test[k][i][1]])
+
+                    while len(memory_info) != self.memory_size:
+                        cop = deepcopy(memory_info[-1])
+                        memory_info.append(cop)
+
+                    data_point = [augmented_test[j][i][0],
+                                  augmented_test[j][i][1], memory_info]
+                    test_memory.append(data_point)
+
+            del augmented_test
+
+        else:
+            print('Adding info to train data...')
+            train_memory = []
+            for i in tqdm(range(len(augmented_train))):
+
+                for j in range(len(augmented_train[0])):
+
+                    data_point = [augmented_train[i][j]
+                                  [0], augmented_train[i][j][1]]
+                    train_memory.append(data_point)
+
+           # del augmented_train
+
+            print('Adding info to test data...')
+            test_memory = []
+            for i in tqdm(range(len(augmented_test))):
+
+                for j in range(len(augmented_test[0])):
+
+                    data_point = [augmented_test[i][j]
+                                  [0], augmented_test[i][j][1]]
+                    test_memory.append(data_point)
+
+        # ------------------------
+        # Repeat yaw examples for class imbalance
+        # ------------------------
+        # print('Adjusting yaw class imbalance')
+        # additional_data=[]
+        # for i in range(len(train_memory)):
+        #     if abs(train_memory[i][0][2])>0.25:
+        #         cop = deepcopy(train_memory[i])
+        #         additional_data.append(cop)
+        # train_memory+=additional_data
+
+        train = train_memory
+        test = test_memory
+
+        # if self.visualize_data:
+        #     self._visualize_robot_dataset_(processed_train,train_memory)
+
+        torch.cuda.empty_cache()
+
+        print(
+            f'Final shapes: train = {len(train)}, test={len(test)}, test unbatched = {len(test_unbatched)}')
+
+        np.random.shuffle(train)
+        np.random.shuffle(test)
 
         print('Train samples:', len(train))
         print('Test samples:', len(test))
-        print('Data, Test shape:', batched_extracted_data.shape, batched_extracted_test.shape)
+        print('Image shape:', train[0][1].shape)
+        if self.use_memory:
+            print('Memory shape:', len(train[0][2]))
 
-        print('Image shape:', batched_extracted_data[0][0][1].shape)
-
-        # test data in batches of 10
-        train_data = CustomDataset(train)
+        # train data in batches of 10
+        train_data = CustomDataset(train, use_memory=self.use_memory)
         trainloader = DataLoader(train_data, batch_size=self.batch_size,
                                  shuffle=True, drop_last=True, num_workers=2, pin_memory=True)
 
         # eval data in batches of 10
-        test_data = CustomDataset(test)
-        testloader = DataLoader(
-            test_data, batch_size=self.batch_size, num_workers=2, pin_memory=True, shuffle=True)
+        test_data = CustomDataset(test, use_memory=self.use_memory)
+        test_batch_size = self.batch_size if len(
+            test) >= self.batch_size else len(test)
+        testloader = DataLoader(test_data, batch_size=test_batch_size,
+                                num_workers=2, pin_memory=True, shuffle=True, drop_last=True)
 
         # final test data in batches of 1...memory will have to fill
+        testdemo_data = CustomDataset(test_unbatched, use_memory=False)
         testdemoloader = DataLoader(
-            extracted_test, batch_size=1, num_workers=2, pin_memory=True)
-            
+            testdemo_data, batch_size=1, num_workers=2, pin_memory=True)
 
         self.trainloader = trainloader
         self.testloader = testloader
@@ -698,15 +1033,25 @@ class CommandNet(nn.Module):
     def _data_rescale(self, commands, policy):
 
         # prepare commands
-        commands = commands.reshape(-1).detach().cpu().tolist()
+        if self.multi_command:
+            for i in range(len(commands)):
+                commands[i] = commands[i].detach().item()
+        else:
+            commands = commands.reshape(-1).detach().tolist()
+        policy = policy.detach().item()
 
         # prepare policy
-        policy = round(policy.detach().cpu().item())
+        if policy < 0.4:
+            policy = 0
+        else:
+            policy = 1
+        # policy = round(policy)
 
         if self.scale_commands:
             commands.append(policy)
 
             commands = np.array(commands)
+            commands = np.clip(commands, 0.0, 1.0)
             commands = commands*self.data_rescales[1]+self.data_rescales[0]
 
             policy = commands[-1]
@@ -945,16 +1290,16 @@ class CommandNet(nn.Module):
         # extract 36 random images
         # imgs=extracted[:,1]
 
-        rand = []
-        for i in range(len(extracted)):
-            if np.random.choice(2, 1) == 1:
-                rand.append(to_pil(extracted[i][1]))
-            if len(rand) == 36:
-                break
+        # rand = []
+        # for i in range(len(extracted)):
+        #     if np.random.choice(2, 1) == 1:
+        #         rand.append(to_pil(extracted[i][1]))
+        #     if len(rand) == 36:
+        #         break
 
-        rand = np.array(rand, dtype=object)
+        # rand = np.array(rand, dtype=object)
 
-        print('Num of visualized inputs:', len(rand))
+        # print('Num of visualized inputs:', len(rand))
 
         # plt.figure(figsize=(20, 17))
         # plt.title('Input examples')
@@ -977,35 +1322,30 @@ class CommandNet(nn.Module):
         # OUTPUTS
         x_vels = []
         y_vels = []
-        yaws = []
-        height = []
-        freq = []
+
         policy = []
 
-        for [(x, y, yaw, h, f, p), _] in extracted:
+       # print(extracted, original)
+        for comm, _ in extracted:
+            x, y, yaw, p = comm
             x_vels.append(x)
             y_vels.append(y)
             yaws.append(yaw)
-            height.append(h)
-            freq.append(f)
             policy.append(p)
 
         origx = []
         origy = []
         origyaw = []
-        origh = []
-        origf = []
         origp = []
 
-        for x, y, yaw, h, f, p in original:
+        for comm, _ in original:
+            x, y, yaw, p = comm
             origx.append(x)
             origy.append(y)
             origyaw.append(yaw)
-            origh.append(h)
-            origf.append(f)
             origp.append(p)
 
-        fig, axes = plt.subplots(2, 6)
+        fig, axes = plt.subplots(2, 4)
 
         axes[0, 0].hist(x_vels)
         axes[0, 0].set_title('x_vels')
@@ -1022,20 +1362,10 @@ class CommandNet(nn.Module):
         axes[1, 2].hist(origyaw)
         axes[1, 2].set_title('orig yaws')
 
-        axes[0, 3].hist(height)
-        axes[0, 3].set_title('foot height')
-        axes[1, 3].hist(origh)
-        axes[1, 3].set_title('orig foot height')
-
-        axes[0, 4].hist(freq)
-        axes[0, 4].set_title('step freq')
-        axes[1, 4].hist(origf)
-        axes[1, 4].set_title('orig step freq')
-
-        axes[0, 5].hist(policy)
-        axes[0, 5].set_title('policy')
-        axes[1, 5].hist(origp)
-        axes[1, 5].set_title('orig policy')
+        axes[0, 3].hist(policy)
+        axes[0, 3].set_title('policy')
+        axes[1, 3].hist(origp)
+        axes[1, 3].set_title('orig policy')
 
         fig.tight_layout()
         plt.show()
@@ -1043,7 +1373,6 @@ class CommandNet(nn.Module):
     def _save_all_models_(self):
         import pickle as pkl
         all_models = {}
-
         for model_type in self.models:
             print(f'Saving model type: {model_type}')
             all_models[model_type] = self.models[model_type].state_dict()
@@ -1058,19 +1387,16 @@ class CommandNet(nn.Module):
     def _save_model_plots(self, loss_log, test_loss):
         import matplotlib.pyplot as plt
 
-        log_keys = ['total', 'x_vel', 'y_vel',
-                    'yaw', 'height', 'freq', 'policy']
+        log_keys = ['total', 'x', 'y',
+                    'yaw', 'policy']
 
-        fig, ax = plt.subplots(2, 4, sharey=True)
+        fig, ax = plt.subplots(3, 2, sharey=True)
         fig.suptitle(
             f'Loss per Epoch\n Final train loss: {round(loss_log["total"][-1],4)}    Final eval loss: {round(test_loss["total"][-1],4)} ')
         count = 0
-        for i in range(2):
-            for j in range(4):
-                if i == 1 and j == 3:
-                    #  ax[i,j].plot(range(len(test_loss['time'])),test_loss['time'],label='test')
-                    #  ax[i,j].set_title('Time')
-                    #  ax[i,j].tick_params(axis='y')
+        for i in range(3):
+            for j in range(2):
+                if i == 2 and (j == 1):
                     continue
 
                 ax[i, j].plot(range(len(loss_log['total'])),
@@ -1083,33 +1409,38 @@ class CommandNet(nn.Module):
         fig.legend(handles, labels, loc='upper right')
         plt.ylim(0.0, 0.6)
         fig.tight_layout()
-        plt.savefig(f'{self.model_path}/losses.png')
-        plt.show()
+        extra = 'finetuned' if self.finetune else ''
+        plt.savefig(f'{self.model_path}/losses_{extra}.png')
+        # plt.show()
 
-        if self.demo_type == 'robot':
-            eval_preds, eval_labels = self.evaluate_full_demo()
-            eval_keys = log_keys[1:]
-            fig, ax = plt.subplots(2, 3, sharey=True)
-            fig.suptitle(f'Full test demo')
-            count = 0
-            for i in range(2):
-                for j in range(3):
+        eval_preds, eval_labels = self.evaluate_full_demo()
+        eval_keys = log_keys[1:]
+        fig, ax = plt.subplots(2, 2, sharey=True, figsize=(15, 15))
+        fig.suptitle(f'Full test demo')
+        count = 0
+        for i in range(2):
+            for j in range(2):
 
-                    ax[i, j].plot(range(len(eval_preds[eval_keys[count]])),
-                                  eval_preds[eval_keys[count]], label='Pred')
-                    ax[i, j].plot(range(len(eval_labels[eval_keys[count]])),
-                                  eval_labels[eval_keys[count]], label='Truth')
-                    ax[i, j].set_title(eval_keys[count])
-                    count += 1
+                ax[i, j].plot(range(len(eval_preds[eval_keys[count]])),
+                              eval_preds[eval_keys[count]], label='Pred')
+                ax[i, j].plot(range(len(eval_labels[eval_keys[count]])),
+                              eval_labels[eval_keys[count]], label='Truth')
+                ax[i, j].set_title(eval_keys[count])
+                count += 1
             handles, labels = ax[0, 0].get_legend_handles_labels()
             fig.legend(handles, labels, loc='upper right')
             fig.tight_layout()
-            plt.savefig(f'{self.model_path}/preds.png')
-            plt.show()
+            plt.savefig(f'{self.model_path}/preds_{extra}.png')
+
+        # plt.show()
 
     def load_trained(self):
-
-        load_model = torch.load(self.model_load_path)
+        if self.deploy:
+            load_model = torch.load(self.model_deploy_load_path)
+            print('Load model path:', self.model_deploy_load_path)
+        else:
+            load_model = torch.load(self.model_load_path)
+            print('Load model path:', self.model_load_path)
 
         # load all models
         for model_type in self.models:
@@ -1120,40 +1451,122 @@ class CommandNet(nn.Module):
             if self.deploy:
                 # set into eval mode
                 self.models[model_type].eval()
-
-        
-        if self.deploy:
-            # dummy pass to cache
-            fake_data=torch.zeros(size=(1,3,224,224)).cuda()
-
-            self.forward(fake_data)
-
-            print('Model ready for inference.')
+                print('Eval mode')
 
     def _reset_memory(self):
 
         # reset memory
-        self.batch_memory=torch.empty(shape=(0,self.memory_output_shape+5))
+        self.batch_memory = torch.empty(
+            size=(self.batch_size, 0, self.mem_output_shape+4), requires_grad=False).cuda()
 
         # reset filled boolean
         self.memory_filled = False
 
+    def _reset_fill_count(self):
+        self.fill_curr = 0
+
+    def _fill_memory(self):
+
+        self.fill_curr += 1
+        # print('Filling memory, fill count:', self.fill_curr)
+
+        first = self.batch_memory[:, :self.fill_curr].reshape(
+            self.batch_size, self.fill_curr, -1)
+
+        self.fill_memory = first
+        # print('pre-fill', first.shape)
+        fill = self.batch_memory[:, -1]
+
+        self._reset_memory()
+        self._add_to_memory(first)
+
+        while self.batch_memory.shape[1] < self.memory_size:
+            new = deepcopy(fill).reshape(self.batch_size, 1, -1)
+            self.batch_memory = torch.concat((self.batch_memory, new), dim=1)
+
+        self.memory_filled = True
+
+    def _add_to_memory(self, embedding):
+        with torch.no_grad():
+
+            self.batch_memory = torch.concat(
+                (self.batch_memory, embedding), dim=1)
+
+            if self.memory_filled:
+                # remove first element
+                new_memory = self.batch_memory[:, 1:]
+                del self.batch_memory
+                self.batch_memory = new_memory
+                assert self.batch_memory.shape == (
+                    self.batch_size, self.memory_size, self.mem_output_shape+4), f'{self.batch_memory.shape}'
+
+    def get_memory_zero_comm(self, tens):
+
+        zero_comm = np.array([0.0, 0.0, 0.0, 0.0])
+
+        if self.scale_commands:
+            zero_comm = (
+                zero_comm - self.data_rescales[0])/self.data_rescales[1]
+
+        if tens:
+            zero_comm = torch.tensor(
+                zero_comm, device=self.device).reshape(self.batch_size, 4)
+            zero_comm = zero_comm.repeat(self.batch_size, 1)
+            assert zero_comm.shape == (self.batch_size, 4), zero_comm.shape
+
+        return zero_comm
+
+    def plot_data(self, sample, title, pil=False):
+        if pil:
+            to_pil = transforms.Compose([
+                transforms.ToPILImage(),]
+            )
+            sample[1] = to_pil(sample[1])
+        import matplotlib.pyplot as plt
+        plt.figure()
+        plt.title(f'{title}:{sample[0]}')
+        plt.imshow(sample[1])
+        plt.show()
+
+
 if __name__ == '__main__':
 
-    demo_type = 'robot'
-    demo_folder = 'simple'
-    deploy = 'False'
-    scaled_commands = False
-    finetune = False
+    demo_type = 'sim'
+    demo_folder = 'icra_trials/combo'
+    deploy = False
+    scaled_commands = True
+    use_memory = True
+    use_flipped = False
+    multi_command = True
 
-    model = ['resnet18']
+    model = ['mnv3s']
     for m in model:
+
+        finetune = False
+
         cnn = CommandNet(demo_type=demo_type,
                          model_name=m,
                          demo_folder=demo_folder,
                          deploy=deploy,
                          scaled_commands=scaled_commands,
-                         finetune=finetune)
+                         finetune=finetune,
+                         use_memory=use_memory,
+                         use_flipped=use_flipped,
+                         multi_command=multi_command)
+
+        cnn.train_model()
+
+        finetune = True
+
+        cnn = CommandNet(demo_type=demo_type,
+                         model_name=m,
+                         demo_folder=demo_folder,
+                         deploy=deploy,
+                         scaled_commands=scaled_commands,
+                         finetune=finetune,
+                         use_memory=use_memory,
+                         use_flipped=use_flipped,
+                         multi_command=multi_command)
 
         cnn.train_model()
 

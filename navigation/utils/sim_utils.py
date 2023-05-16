@@ -21,7 +21,7 @@ def render_first_third_imgs(env, view_imgs=False):
     w, h = img.shape
     first_person= img.reshape([w, h // 4, 4])
 
-    # collect 3rd person view
+    #collect 3rd person view
     env.gym.set_camera_location(env.rendering_camera, env.envs[0], gymapi.Vec3(bx.item()-1.2*np.cos(heading.item()), by.item()-1.2*np.sin(heading.item()), bz+1),gymapi.Vec3(bx.item()+np.cos(heading.item()), by.item()+np.sin(heading.item()), bz))
     env.gym.step_graphics(env.sim)
     env.gym.render_all_camera_sensors(env.sim)
@@ -34,11 +34,11 @@ def render_first_third_imgs(env, view_imgs=False):
         fig, ax = plt.subplots(2,1)
         ax[0].imshow(first_person)
         ax[0].set_title('First Person')
-        ax[1].imshow(third_person)
-        ax[1].set_title('Third Person')
+        #ax[1].imshow(third_person)
+        #ax[1].set_title('Third Person')
         plt.show()
 
-    return first_person, third_person
+    return first_person[:,:,:3], third_person[:,:,:3]
 
 def update_sim_view(env, offset=[-1,-1,1]):
     '''

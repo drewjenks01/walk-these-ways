@@ -16,18 +16,11 @@ from lcm_types.state_estimator_lcmt import state_estimator_lcmt
 from lcm_types.rc_command_lcmt import rc_command_lcmt
 from lcm_types.realsense_lcmt import realsense_lcmt
 
-from navigation.utils.image_processing import process_realsense
+from navigation.utils.image_processing import process_deployed
 from navigation.commandnet.commandNN import CommandNet
 from navigation.utils.demo import Demo
 
 import gzip, pickletools
-
-"""
-To do
- - capture deth as well if no slow down
- - test slow down with timer -> every 10 iters, 10/time = freq
-
-"""
 import cv2
 import torch
 import numpy as np
@@ -35,13 +28,9 @@ import numpy as np
 
 class RealSense:
 
-    def __init__(self, camera_type, display_camera=False):
-        self.display_camera_img = display_camera
+    def __init__(self, camera_type, image_type):
         self.camera_type = camera_type      # 'realsense' or '360'
-
-        if self.display_camera_img:
-            print('Displaying img')
-            self.display_camera()
+        self.image_type = image_type    # 'rgb' or 'depth'
 
         self.lc = lcm.LCM("udpm://239.255.76.67:7667?ttl=255")
 
@@ -71,10 +60,7 @@ class RealSense:
         if not os.path.exists(self.log_root):
             os.makedirs(self.log_root)
         self.log_filename = None
-        self.log_count = 1
         self.logging = False
-        self.log_start_time=0
-        self.log_iter_count =1
 
         # reverse legs
         self.joint_idxs = [3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8]
@@ -142,14 +128,9 @@ class RealSense:
         demo_folder = 'simple'
         scaled_commands = False
         deploy = True
-        self.model = CommandNet(model_name=model_name, demo_folder=demo_folder, scaled_commands=scaled_commands, deploy=deploy)
-        self.model.load_trained()
+        # self.model = CommandNet(model_name=model_name, demo_folder=demo_folder, scaled_commands=scaled_commands, deploy=deploy)
+        # self.model.load_trained()
 
-        # fake inference data to cache model
-        fake_data=torch.zeros(size=(1,3,224,224)).cuda()
-        self.model(fake_data)
-        print('NN is ready!')
-        #self._legdata_cb(np.zeros((5)))
 
         os.system(f'sudo chown -R $USER {self.log_root}')
         self.spin()
@@ -164,8 +145,6 @@ class RealSense:
         self.timestep=0
         #self.time = time.time()
 
-        # demo
-        demo = Demo(log_root=self.log_root)
         while True:
             # if self.timestep % 10 == 0 and self.timestep!=0: 
             #     print(f'frq: {10 / (time.time() - self.time)} Hz');
@@ -174,22 +153,33 @@ class RealSense:
             if self.right_lower_right_switch_pressed:
                 print('Resetting...')
                 self.right_lower_right_switch_pressed=False
-                demo.end_log(no_save=True)
+                if self.logging:
+                    demo.undo_log()
+                    del demo
+                self.logging = False
                 
 
             # check rc_command to start log
             if self.left_lower_left_switch_pressed and not self.logging:
-                demo.init_log()
+                demo = Demo(log_root=self.log_root)
+                fps_logging = time.time()
                 self.left_lower_left_switch_pressed = False
+                self.logging=True
+                demo.init_log(start_iter=self.timestep)
+                print('demo initialized')
 
 
             elif self.left_lower_left_switch_pressed and self.logging:
                 print('Ending log...')
-                demo.end_log()
+                demo.end_log(end_iter=self.timestep)
+                del demo
+                print('log ended and saved')
                 self.left_lower_left_switch_pressed = False
+                self.logging = False
 
 
             camera_imgs = self.capture_realsense_img()
+            #print(len(camera_imgs))
             rs_img_rgb = camera_imgs['Image1st']
             
 
@@ -216,24 +206,21 @@ class RealSense:
 
             # log commands and image
             if self.logging:
-                if demo.log_iter_count%1==0:
+                frame_comms = {'x':comms[0],'y':comms[1],'yaw':comms[2],'policy':comms[3]}
+                demo.collect_frame_commands(frame_comms)
 
-                    torques = 
-                    joint_vels = self.joint_vel
+            if self.logging and time.time()-fps_logging>=1/demo.fps and len(comms)>0:
 
-                    demo_data = {'Commands':comms, 'Image1st':rs_img_rgb, 'DepthImg':camera_imgs['DepthImg']}
+                torques = self.tau_est
+                joint_vels = self.joint_vel
 
-                    demo.collect_demo_data(data = demo_data)
+                demo_data = {'Image1st':rs_img_rgb, 'DepthImg':camera_imgs['DepthImg'] , 'Torque':torques, 'Joint_Vel':joint_vels}
+
+                demo.collect_demo_data(data = demo_data)
 
 
-                # save partial log every 5 seconds
-                if time.time()-self.log_start_time>=5:
-                    fps = len(demo.log['Image1st'])/5.0
-                    print(f'FPS: {fps}')
-                    demo.save_partial_log()
-
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+                fps_logging = time.time()
+                        
 
             self.timestep+=1
 
@@ -263,18 +250,12 @@ class RealSense:
             self.rs_pipeline = rs.pipeline()
             config = rs.config()
 
-            config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 3)
-            config.enable_stream(rs.stream.color, 640, 480, rs.format.rgb8, 3)
-
-            self.rs_pipeline.start(config)
+            config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+            config.enable_stream(rs.stream.color, 640, 480, rs.format.rgb8, 30)
+            profile = self.rs_pipeline.start(config)
 
             align_to = rs.stream.color
-            self.rs_align = rs.rs_align(align_to)
-
-            print('RS FPS:', )
-
-
-
+            self.rs_align = rs.align(align_to)
 
         print('Beginning log')
 
@@ -310,6 +291,10 @@ class RealSense:
             # Convert images to numpy arrays
             depth_image = np.asanyarray(depth_frame.get_data())
             color_image = np.asanyarray(color_frame.get_data())
+
+            # copy
+            depth_image = depth_image.copy()
+            color_image = color_image.copy()
 
             imgs['Image1st'] = color_image
             imgs['DepthImg'] = depth_image
@@ -394,21 +379,29 @@ class RealSense:
             cmd_freq = 2.0
             cmd_footswing = 0.30
 
-        elif self.mode == 6:
+        elif self.mode == 5:
             self.policy=0    # walk
 
             cmd_freq = 3.0
             cmd_footswing = 0.08
 
-        elif self.mode==5: #right dpad
-            self.use_commandnet=True
-            print('Using CommandNet')
+        elif self.mode == 6:
+            self.policy= 2   # duck
 
-        elif self.mode==7: #left dpad
-            self.use_commandnet=False
+            cmd_freq = 3.0
+            cmd_footswing = 0.08
+            cmd_body = -0.2
+
+        # elif self.mode==5: #right dpad
+        #     self.use_commandnet=True
+        #     print('Using CommandNet')
+
+        # elif self.mode==7: #left dpad
+        #     self.use_commandnet=False
         
 
-        comms = np.array([cmd_x, cmd_y, cmd_yaw, cmd_footswing, cmd_freq, self.policy])
+        comms = np.array([cmd_x, cmd_y, cmd_yaw, self.policy])
+        #print(comms)
         return comms
 
     def nn_commands(self,img):
@@ -416,9 +409,13 @@ class RealSense:
             print('Stopping NN...')
             self.use_commandnet = False
 
-        img= process_realsense(img, deploy=True)
-        commands, policy = self.model(img)
-        commands, policy = self.model._data_rescale(commands, policy)
+        img= process_deployed(img)
+
+        if self.model.use_memory:
+            self.model.forward(img)
+        else:
+            commands, policy = self.model.forward(img)
+            commands, policy = self.model._data_rescale(commands, policy)
 
         commands.append(policy)
         commands = np.array(commands)
@@ -545,4 +542,5 @@ class RealSense:
 
 if __name__ == '__main__':
 
-    rs = RealSense(time_logs=False, display_camera=False)
+    camera_type = 'realsense'
+    rs = RealSense(camera_type=camera_type)

@@ -1,4 +1,6 @@
 import torch
+import time
+import random
 
 class CommandProfile:
     def __init__(self, dt, max_time_s=10.):
@@ -182,7 +184,8 @@ class RCControllerProfileAccel(RCControllerProfile):
 
 
 class VisionControllerProfile(RCControllerProfile):
-    def __init__(self, dt, state_estimator, x_scale=1.0, y_scale=1.0, yaw_scale=1.0):
+    
+    def __init__(self, dt, state_estimator, x_scale=1.0, y_scale=1.0, yaw_scale=1.0, random_drift=False):
         super().__init__(dt, state_estimator, x_scale=x_scale, y_scale=y_scale, yaw_scale=yaw_scale)
 
         # whether or not CommandNet being used
@@ -198,6 +201,12 @@ class VisionControllerProfile(RCControllerProfile):
         self.controller = 0   # 0=RC, 1=XBOX
         self.xbox=None
 
+        # whether using domain randomization
+        self.random_drift = random_drift
+        if self.random_drift:
+            print('Using drift')
+            self.domain_change_timer = time.time()
+
 
     def get_command(self, t, probe=False):
 
@@ -209,20 +218,22 @@ class VisionControllerProfile(RCControllerProfile):
         #print('received command',self.state_estimator.realsense_commands)
 
         if self.use_commandnet:
-            x_cmd , y_cmd, yaw_cmd ,fs_height_cmd, step_freq_cmd, policy = self.state_estimator.realsense_commands
+            x_cmd , y_cmd, yaw_cmd, policy = self.state_estimator.realsense_commands
             
             if policy==1.0:
                 self.policy='stairs'
+                commands[4] = 2.0       # step freq
+                commands[9] = 0.30      # footswing height
                 self.yaw_bool = True
             elif policy==0.0:
                 self.policy='walk'
                 self.yaw_bool = False
+                commands[4] = 3.0
+                commands[9] = 0.08
 
             commands[0] = x_cmd
             commands[1]= y_cmd
             commands[2] = yaw_cmd
-            commands[4] = step_freq_cmd
-            commands[9] = fs_height_cmd
 
             # multipliers
             commands[0] = commands[0] * self.x_scale
@@ -240,22 +251,44 @@ class VisionControllerProfile(RCControllerProfile):
 
                 self.yaw_bool=True
 
+                commands[3] = 0.
                 commands[4] = 2.0       # step freq
                 commands[9] = 0.30      # footswing height
 
-            elif se_mode==6: # if DOWN arrow record on controller
+
+            elif se_mode==5: # if RIGHT arrow record on controller
                 self.policy = 'walk' # walk policy
 
                 self.yaw_bool=False
+                
+                commands[3] = 0.
+                commands[4] = 3.0
+                commands[9] = 0.08
+            
+            
+            elif se_mode==6: # if DOWN arrow record on controller
+                self.policy = 'walk' # walk policy, duck
 
+                self.yaw_bool=False
+
+                commands[3] = -0.2
                 commands[4] = 3.0
                 commands[9] = 0.08
 
-        if se_mode==5: #right dpad
-            self.use_commandnet=True
 
-        elif se_mode==7: #left dpad
-            self.use_commandnet=False
+        # if se_mode==5: #right dpad
+        #     self.use_commandnet=True
+
+        # elif se_mode==7: #left dpad
+        #     self.use_commandnet=False
+
+        # randomize drifts every 5 seconds
+        if self.random_drift and time.time()-self.domain_change_timer>=5.0:
+            random_yaw_drift  = self.domain_randomization()
+
+            commands[2] += random_yaw_drift
+
+            self.domain_change_timer = time.time()
 
 
         return commands, reset_timer
@@ -266,6 +299,13 @@ class VisionControllerProfile(RCControllerProfile):
 
     def get_buttons(self):
         return self.state_estimator.get_buttons()
+    
+    def domain_randomization(self):
+        rand_yaw_drift = random.uniform(0.1,0.3)*random.choice([1,-1])
+
+        print('New drift:',rand_yaw_drift)
+
+        return rand_yaw_drift
 
 
 class KeyboardProfile(CommandProfile):

@@ -13,7 +13,7 @@ class realsense_lcmt(object):
     __slots__ = ["commands"]
 
     def __init__(self):
-        self.commands = [ 0.0 for dim0 in range(6) ]
+        self.commands = [ 0.0 for dim0 in range(5) ]
 
     def encode(self):
         buf = BytesIO()

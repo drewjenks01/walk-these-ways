@@ -202,9 +202,9 @@ class DemoViewer:
 
 if __name__ == "__main__":
 
-    runs = [1]
+    runs = [11]
     for r in runs:
-        viewer = DemoViewer(run_num=r, extract =True, save_video=False, demo_folder='simple', use_nn=False, use_rgb=True)
+        viewer = DemoViewer(run_num=r, extract =False, save_video=False, demo_folder='simple', use_nn=False, use_rgb=True)
         viewer.view_video()
         #viewer.update_demos()
     

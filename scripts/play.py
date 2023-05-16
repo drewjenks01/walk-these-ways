@@ -4,6 +4,8 @@ import isaacgym
 assert isaacgym
 import torch
 import numpy as np
+import random
+import time
 
 import glob
 import pickle as pkl
@@ -19,7 +21,7 @@ from go1_gym.envs.wrappers.no_yaw_wrapper import NoYawWrapper
 import pandas
 
 from navigation.commandnet.commandNN import CommandNet
-from navigation.utils.image_processing import process_realsense
+from navigation.utils.image_processing import process_deployed
 from navigation.utils.sim_utils import create_xbox_controller, update_sim_view, render_first_third_imgs
 from navigation.utils.demo import Demo
 from navigation.utils.video_recorder import VideoRecorder
@@ -101,7 +103,7 @@ def load_env(label, headless=False):
     Cfg.terrain.mesh_type='trimesh'
 
     Cfg.terrain.generated = False
-    Cfg.terrain.generated_name = '0007'
+    Cfg.terrain.generated_name = '0014'
     Cfg.terrain.generated_diff = 'icra'
     Cfg.terrain.icra = True
     Cfg.terrain.maze_terrain=Cfg.terrain.generated
@@ -205,8 +207,13 @@ def play_go1(headless=True):
     collect_data=False  # starts when Y pressed on controller
     execute_script=False
     record_video=False
+    domain_random = False
+    if domain_random:
+        rand_y_drift = None
+        rand_yaw_drift = None
+        domain_change_timer = time.time()
 
-    demo_folder=f'sim_trials/{env.cfg.terrain.generated_diff}'
+    #demo_folder=f'sim_trials/{env.cfg.terrain.generated_diff}'
 
 
 
@@ -216,10 +223,20 @@ def play_go1(headless=True):
 
     i=0
 
-    demo_folder = 'sim_multi'
-    model_name = 'resnet18'
-    model = CommandNet(model_name=model_name,demo_folder=demo_folder)
-    model.load_trained()
+    demo_save_folder = 'navigation/robot_demos/icra_trials'
+    demo_folder = 'icra_trials/combo'
+    model_name = 'mnv3s'
+    use_memory=True
+    multi_command = True
+    scale_commands = True
+    finetune= True
+    model = CommandNet(model_name=model_name,
+                        demo_folder=demo_folder, 
+                        deploy=True, 
+                        use_memory=use_memory, 
+                        multi_command=multi_command, 
+                        scaled_commands=scale_commands,
+                        finetune=finetune)
 
     test_started=False
     test_time=0
@@ -227,7 +244,7 @@ def play_go1(headless=True):
     curr_policy = 'walk'
     policy=0
 
-    import time
+
 
     while True:
 
@@ -249,61 +266,52 @@ def play_go1(headless=True):
         if x_cmd!=0:
             env.reset()
             print('Resetting demo')
+            if collect_data:
+                new_demo.undo_log()
             collect_data=False
-            new_demo=Demo(folder=demo_folder)
+
             
      
         # read and update demo collect bool
-        if y_cmd!=0:
-            new_demo = Demo(folder=demo_folder)
-            demo_type = 'manual'        # manual or demo
+        if y_cmd!=0 and not collect_data:
+            print('Starting log...')
+            new_demo = Demo(log_root=demo_save_folder)
 
             collect_data=True
 
-            if demo_type == 'demo':
+            fps_logging = time.time()
+            curr_loc = np.array([env.root_states[0, 0].item(), env.root_states[0, 1].item()])
 
-                 # demo collection
-                new_demo.prepare_demo(terrain = f'{env.cfg.terrain.generated_diff}/{env.cfg.terrain.generated_name}')
-          
-            elif demo_type=='manual':
-                manual_gait = 'stair'     # wtw, stair, multi
-                print(f'Starting manual test for : Gait={manual_gait}, env={env.cfg.terrain.generated_diff}')
-
-                # manual testing
-                new_demo.prepare_gait_test()
-                start_time=time.time()
+            # manual testing
+            new_demo.init_log(start_iter=i)
         
         if a_btn!=0:
             print('Saving demo...')
             collect_data=False
 
-            if demo_type=='demo':
-                new_demo.save_demo()
+            print('\n')
+            inp = input('Test success?')
 
-            elif demo_type=='manual':
-                end_time=time.time()
-            
-                collect_data=False
+            # check if test is sucess
+            if inp=='y':
+                success=1
+            else:
+                success=0
 
-                test_time = end_time-start_time
-                print('\n')
-                inp = input('Test success?')
-
-                # check if test is sucess
-                if inp=='y':
-                    success=1
-                else:
-                    success=0
-                        
-                new_demo.save_gait_test(time=test_time,success=success)
+            addit = {'Success':success}
+            new_demo.log.update(addit)
+            new_demo.end_log(end_iter=i)
             del new_demo
-            new_demo=Demo(folder=demo_folder)
+            new_demo=Demo(log_root=demo_folder)
             
 
         # turn off NN control
         if ltrig!=0:
             print('Action script off')
             execute_script=False
+            if model.use_memory:
+                model._reset_memory()
+                model._reset_fill_count()
 
         if b!=0:
             test_started=True
@@ -319,7 +327,7 @@ def play_go1(headless=True):
 
             step_frequency_cmd = 2.0
             footswing_height_cmd = 0.30
-            stance_width_cmd = 0.35
+
 
             print(f'Switch policy to {curr_policy}')
         
@@ -331,7 +339,6 @@ def play_go1(headless=True):
 
             step_frequency_cmd = 3.0
             footswing_height_cmd = 0.08
-            stance_width_cmd = 0.35
 
             print(f'Switch policy to {curr_policy}')
             #test_started=True
@@ -342,10 +349,9 @@ def play_go1(headless=True):
             # read and update footswing height
             if foot_up!=0:
                 #body_height_cmd = 0.0
-                footswing_height_cmd = 0.25
+                footswing_height_cmd = 0.3
                 #stance_width_cmd = 0.35
                 step_frequency_cmd = 2.0
-                stance_width_cmd = 0.35
 
                 # footswing_height_cmd=0.27
                 # step_frequency_cmd=2.0
@@ -362,7 +368,6 @@ def play_go1(headless=True):
                 # footswing_height_cmd=0.08
                 # step_frequency_cmd=3.0
                 # body_height_cmd = 0.0
-                stance_width_cmd = 0.35
 
             if xdpad>0:
                 gait = torch.tensor(gaits["trotting"])
@@ -383,42 +388,83 @@ def play_go1(headless=True):
             
 
         else:
-            first, _= render_first_third_imgs(env)
-            img= process_realsense(image=first, deploy=True)
+            first,_ = render_first_third_imgs(env)
+            img= process_deployed(first)
 
             # check if model memory is filled yet
-            if not model.memory_filled:
+            if model.use_memory and not model.memory_filled:
                 # if not, add to memory and get processed command
 
                 # add to memory
-                model(img)
+                model.forward(img)
 
             else:
 
                 # if memory is filled, get predicted commands from NN
-                commands, policy = model(img)
-                commands, policy = model._data_rescale(commands, policy)
+                commands, policy = model.forward(img)
+                commands, policy= model._data_rescale(commands, policy)
 
-                x_vel_cmd,y_vel_cmd,yaw_vel_cmd,footswing_height_cmd,step_frequency_cmd = commands
+                x_vel_cmd,y_vel_cmd,yaw_vel_cmd= commands
 
                 print('x_vel:',round(x_vel_cmd,2),'y_vel:',round(y_vel_cmd,2),
-                'yaw:',round(yaw_vel_cmd,2),'height:',round(footswing_height_cmd,2), 
-                'freq:',round(step_frequency_cmd,2), 'policy:',curr_policy)
+                'yaw:',round(yaw_vel_cmd,2), 'policy:',curr_policy)
 
             if policy==1:
                 curr_policy='stairs'
                 env.yaw_bool = True
-                stance_width_cmd = 0.35
+                step_frequency_cmd = 2.0
+                footswing_height_cmd = 0.30
             elif policy==0:
                 curr_policy='walk'
                 env.yaw_bool = False
-                stance_width_cmd = 0.25
+                step_frequency_cmd = 3.0
+                footswing_height_cmd = 0.08
 
-        
-        
-        env.commands[:, 0] = x_vel_cmd
+
+
+
+        # add drift if using domain_randomization
+        if domain_random:
+            
+            # update drifts after 5 sec
+            if time.time()-domain_change_timer>=5.0 or not rand_yaw_drift:
+               # rand_y_drift = random.uniform(0.1,0.3)*random.choice([1,-1])
+                rand_yaw_drift = random.uniform(0.1,0.3)*random.choice([1,-1])
+
+                print('New drift:',rand_yaw_drift)
+                domain_change_timer = time.time()
+
+           # y_vel_cmd += rand_y_drift
+            #yaw_vel_cmd_drift = yaw_vel_cmd+rand_yaw_drift
+
+            # todo: 
+
+        else:
+            rand_yaw_drift = 0.0
+
+
+
+        # scale x_vel if using wtw
+        if curr_policy=='walk':
+            x_vel_cmd_scaled = x_vel_cmd*1.5
+            # scale yaw
+            yaw_vel_cmd_scaled = yaw_vel_cmd*1.5+ rand_yaw_drift
+
+        elif curr_policy=='stair':
+
+            x_vel_cmd_scaled = x_vel_cmd
+            yaw_vel_cmd_scaled = yaw_vel_cmd*1.5 + rand_yaw_drift
+
+        else:
+            x_vel_cmd_scaled = x_vel_cmd
+            yaw_vel_cmd_scaled = yaw_vel_cmd + rand_yaw_drift
+
+           
+
+       
+        env.commands[:, 0] = x_vel_cmd_scaled
         env.commands[:, 1] = y_vel_cmd
-        env.commands[:, 2] = yaw_vel_cmd
+        env.commands[:, 2] = yaw_vel_cmd_scaled
         env.commands[:, 3] = body_height_cmd
         env.commands[:, 4] = step_frequency_cmd
         env.commands[:, 5:8] = gait
@@ -429,23 +475,37 @@ def play_go1(headless=True):
         env.commands[:, 12] = stance_width_cmd
         obs, rew, done, info = env.step(actions)
 
+        # collect commands every timestep -> will be averages
+        if collect_data:
 
-        # extract demo data
-        if i%10==0 and collect_data:
+            frame_comms = {'x':x_vel_cmd,'y':y_vel_cmd,'yaw':yaw_vel_cmd,'policy':policy}
+            new_demo.collect_frame_commands(frame_comms)
 
-            if demo_type=='demo':
 
-                comms = [x_vel_cmd,y_vel_cmd,yaw_vel_cmd,footswing_height_cmd,step_frequency_cmd, policy]
-                
-                new_demo.collect_demo_data(comms, env)
+
+        # extract demo data ->
+        if collect_data and time.time()-fps_logging>=1/new_demo.fps:
+
+            first,_ = render_first_third_imgs(env)
+
+            torques = info['torques'].flatten()
+            joint_vels = info['joint_vel'].flatten()
+
+            new_loc = np.array([env.root_states[0, 0].item(), env.root_states[0, 1].item()])
+
+            distance = np.linalg.norm(new_loc- curr_loc)
+
+            curr_loc = new_loc
+
+            data = {'Image1st':first, 'Torque':torques, 'Joint_Vel':joint_vels, 'Distance':distance,'Drift':rand_yaw_drift}
             
-            elif demo_type=='manual':
-                 
-                torques = info['torques'].flatten()
-                joint_vels = info['joint_vel'].flatten()
+            new_demo.collect_demo_data(data)
 
+            fps_logging = time.time()
 
-                new_demo.collect_gait_test_data(torque=torques ,vel=joint_vels, gait = manual_gait)
+        
+            
+     
 
         # record video
         if record_video:

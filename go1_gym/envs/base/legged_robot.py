@@ -1520,12 +1520,12 @@ class LeggedRobot(BaseTask):
 
         # ICRA additions
         if self.cfg.terrain.icra:
-            self.icra_asset = self.gym.load_asset(self.sim, '/home/andrewjenkins/walk-these-ways/navigation/icra/urdf', 'innermap.urdf', asset_options)
+            self.icra_asset = self.gym.load_asset(self.sim, '/home/andrewjenkins/walk-these-ways/navigation/icra/urdf', 'outermap.urdf', asset_options)
             self.icra_num_bodies = self.gym.get_asset_rigid_body_count(self.icra_asset)
             icra_body_names = self.gym.get_asset_rigid_body_names(self.icra_asset)
             icra_rigid_shape_props_asset = self.gym.get_asset_rigid_shape_properties(self.icra_asset)
             icra_start_pose = gymapi.Transform()
-            icra_start_pose.p = gymapi.Vec3(5.0,10.0,0.0)
+            icra_start_pose.p = gymapi.Vec3(10.0,10.0,0.0)
             # ------
 
         # save body names from the asset

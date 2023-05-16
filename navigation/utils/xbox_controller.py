@@ -36,7 +36,7 @@ class XboxController(object):
     def read(self): # return the buttons/triggers that you care about in this methode
         x = -1 * self.LeftJoystickX  # x vel
         y = -1*self.LeftJoystickY # y vel
-        yaw = -2*self.RightJoystickX # yaw vel
+        yaw = -1*self.RightJoystickX # yaw vel
         a = self.A # switch gaits
         lb = self.LeftBumper
         rb = self.RightBumper

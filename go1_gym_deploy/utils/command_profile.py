@@ -186,7 +186,7 @@ class RCControllerProfileAccel(RCControllerProfile):
 class VisionControllerProfile(RCControllerProfile):
     
     def __init__(self, dt, state_estimator, x_scale=1.0, y_scale=1.0, yaw_scale=1.0, random_drift=False):
-        super().__init__(dt, state_estimator, x_scale=x_scale, y_scale=y_scale, yaw_scale=2.0)
+        super().__init__(dt, state_estimator, x_scale=x_scale, y_scale=y_scale, yaw_scale=2.5)
 
         # whether or not CommandNet being used
         self.use_commandnet = False

@@ -44,7 +44,7 @@ class CustomDataset(Dataset):
 
         if self.use_memory:
             memory = row[2]
-            return image, commands, memory
+            return image, commands, policy, memory
         else:
             return image, commands, policy
 
@@ -217,7 +217,7 @@ class CommandNet(nn.Module):
             # make final layers
             self.command_layer = nn.Sequential(
                 nn.Linear(self.fc_input_shape, 8),
-                nn.Dropout(),
+               # nn.Dropout(),
                 nn.ReLU(),
                 nn.Linear(8, 1)
             )
@@ -232,7 +232,7 @@ class CommandNet(nn.Module):
 
             policy = nn.Sequential(
                 nn.Linear(self.fc_input_shape, 8),
-                nn.Dropout(),
+                #nn.Dropout(),
                 nn.ReLU(),
                 nn.Linear(8, self.num_classes)
             )
@@ -449,7 +449,7 @@ class CommandNet(nn.Module):
             for idx, info in tqdm(enumerate(trainloader)):
 
                 if self.use_memory:
-                    (image, targets, memory) = info
+                    (image, command_targets,policy_targets, memory) = info
                 else:
                     (image, command_targets, policy_targets) = info
 
@@ -563,7 +563,7 @@ class CommandNet(nn.Module):
             for iter, info in enumerate(data):
 
                 if self.use_memory:
-                    (image, targets, memory) = info
+                    (image, command_targets,policy_targets, memory) = info
                 else:
                     (image, command_targets, policy_targets) = info
 
@@ -1495,6 +1495,7 @@ class CommandNet(nn.Module):
             new = deepcopy(fill).reshape(self.batch_size, 1, -1)
             self.batch_memory = torch.concat((self.batch_memory, new), dim=1)
 
+        print(self.batch_memory)
         self.memory_filled = True
 
     def _add_to_memory(self, embedding):
@@ -1543,14 +1544,14 @@ class CommandNet(nn.Module):
 if __name__ == '__main__':
 
     demo_type = 'robot'
-    demo_folder = 'curtain'
+    demo_folder = 'stata'
     deploy = False
     scaled_commands = True
     use_memory = False
-    use_flipped = True
+    use_flipped = False
     multi_command = True
 
-    num_classes = 1
+    num_classes = 3
 
     model = ['mnv3s']
     for m in model:

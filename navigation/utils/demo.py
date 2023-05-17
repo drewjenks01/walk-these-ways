@@ -33,7 +33,7 @@ class Demo:
         self.log_path = f'{self.log_save_path}run{run_num}'
         self.extract = extract
 
-        self.fps = 3
+        self.fps = 6
 
         if self.use_nn:
             self.model = CommandNet(model_name='resnet18', demo_folder='simple', scaled_commands=False)
@@ -205,6 +205,8 @@ class Demo:
         else:
             depth=[]
         commands=self.log['Commands']
+
+        print(f'Comm: {len(self.log["Commands"])}, RGB: {len(self.log["Image1st"])}, Depth: {len(self.log["DepthImg"])} ')
 
         rounded_comms = [[round(com,3) for com in c] for c in commands]
 
@@ -625,7 +627,7 @@ if __name__ == "__main__":
 
     log_root = f'navigation/robot_demos/jenkins_experiment/'
     #log_root = f'navigation/robot_demos/icra_trials/'
-    log_view_folder = 'curr_run'
+    log_view_folder = 'curtain'
 
     
     extract = False
@@ -634,12 +636,13 @@ if __name__ == "__main__":
     use_nn = False
     use_rgb = True
 
-    runs = [8]
+    runs = [1,2,3,4,5,6,7,8,9,10]
+    #runs=[1]
     
     for run in runs:
         demo = Demo(log_root=log_root, log_view_folder = log_view_folder,run_num=run, extract = extract, save_video=save_video, use_nn=use_nn, use_rgb_viewing=use_rgb)
         demo.update_demos()
-        demo.view_video()
+        demo.view_video(just_vid=True)
 
         #demo.view_single(indx=0, save_rgb=True)
         #demo.create_performance_plot()

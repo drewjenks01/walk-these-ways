@@ -254,9 +254,9 @@ class VisionControllerProfile(RCControllerProfile):
 
             # override policy if there is a negative x command
             if commands[0]<0:
-                se_mode = 6
+                se_mode = 0
 
-            if se_mode==4:  # if UP arrow recorded on controller
+            if se_mode==1:  # if UP arrow recorded on controller
                 self.policy = 'stairs' # stair policy
 
                 self.yaw_bool=True
@@ -266,7 +266,7 @@ class VisionControllerProfile(RCControllerProfile):
                 commands[9] = 0.30      # footswing height
 
 
-            elif se_mode==5: # if RIGHT arrow record on controller
+            elif se_mode==0: # if RIGHT arrow record on controller
                 self.policy = 'walk' # walk policy
 
                 self.yaw_bool=False
@@ -276,7 +276,7 @@ class VisionControllerProfile(RCControllerProfile):
                 commands[9] = 0.08
             
             
-            elif se_mode==6: # if DOWN arrow record on controller
+            elif se_mode==2: # if DOWN arrow record on controller
                 self.policy = 'walk' # walk policy, duck
 
                 self.yaw_bool=False
@@ -285,13 +285,13 @@ class VisionControllerProfile(RCControllerProfile):
                 commands[4] = 3.0
                 commands[9] = 0.08
 
-            elif se_mode==7: #left dpad
-                if not self.use_commandnet:
-                    self.use_commandnet = True
-                    se_mode = -1
-                else:
-                    self.use_commandnet=False
-                    se_mode = -1
+        
+        if se_mode == 5:
+            self.use_commandnet=True
+
+        elif se_mode == 7:
+            self.use_commandnet=False
+
 
         # randomize drifts every 5 seconds
         if self.random_drift and time.time()-self.domain_change_timer>=5.0:

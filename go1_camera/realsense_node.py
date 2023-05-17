@@ -125,12 +125,28 @@ class RealSense:
 
 
         #commandnet info
-        model_name = 'resnet18'
-        demo_folder = 'simple'
-        scaled_commands = False
-        deploy = True
-        # self.model = CommandNet(model_name=model_name, demo_folder=demo_folder, scaled_commands=scaled_commands, deploy=deploy)
-        # self.model.load_trained()
+        model_name = 'mnv3s'
+        demo_folder = 'stata'
+        use_memory=False
+        multi_command = True
+        scale_commands = True
+        finetune= True
+        deploy=True
+        num_classes = 3
+        self.model = CommandNet(model_name=model_name,
+                        demo_folder=demo_folder, 
+                        deploy=deploy, 
+                        use_memory=use_memory, 
+                        multi_command=multi_command, 
+                        scaled_commands=scale_commands,
+                        finetune=finetune,
+                        num_classes=num_classes)
+
+        if not self.model.use_memory:
+            # fake inference data to cache model
+            fake_data=torch.zeros(size=(1,3,224,224)).cuda()
+            self.model(fake_data)
+            print('NN is ready!')
 
 
         os.system(f'sudo chown -R $USER {self.log_root}')
@@ -187,7 +203,7 @@ class RealSense:
                 rs_img_rgb = camera_imgs['Image1st']
 
                 # check if model memory is filled yet
-                if not self.model.memory_filled:
+                if self.model.use_memory and not self.model.memory_filled:
                     # if not, add to memory and get processed command
 
                     # add to memory
@@ -258,11 +274,11 @@ class RealSense:
             config = rs.config()
             
             if self.image_type == 'rgb':
-                config.enable_stream(rs.stream.color, 640, 480, rs.format.rgb8, 6)
+                config.enable_stream(rs.stream.color, 640, 480, rs.format.rgb8, 30)
                 align_to = rs.stream.color
 
             if self.image_type == 'depth':
-                config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 6)
+                config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
                 align_to = rs.stream.depth
             
             profile = self.rs_pipeline.start(config)
@@ -313,110 +329,35 @@ class RealSense:
         return imgs
 
     def get_processed_command(self):
-        MODES_LEFT = ["body_height", "lat_vel", "stance_width"]
-        MODES_RIGHT = ["step_frequency", "footswing_height", "body_pitch"]
-
-        if self.left_upper_switch_pressed:
-            self.ctrlmode_left = (self.ctrlmode_left + 1) % 3
-            self.left_upper_switch_pressed = False
-        if self.right_upper_switch_pressed:
-            self.ctrlmode_right = (self.ctrlmode_right + 1) % 3
-            self.right_upper_switch_pressed = False
-
-        MODE_LEFT = MODES_LEFT[self.ctrlmode_left]
-        MODE_RIGHT = MODES_RIGHT[self.ctrlmode_right]
-
         # always in use
         cmd_x = 1 * self.left_stick[1]
         cmd_yaw = -1 * self.right_stick[0]
 
         # default values
         cmd_y = 0.  # -1 * self.left_stick[0]
-        cmd_height = 0.
-        cmd_footswing = 0.08
-        cmd_stance_width = 0.33
-        cmd_stance_length = 0.40
-        cmd_ori_pitch = 0.
-        cmd_ori_roll = 0.
-        cmd_freq = 3.0
-
-        # joystick commands
-        if MODE_LEFT == "body_height":
-            cmd_height = 0.3 * self.left_stick[0]
-        elif MODE_LEFT == "lat_vel":
-            cmd_y = 0.6 * self.left_stick[0]
-        elif MODE_LEFT == "stance_width":
-            cmd_stance_width = 0.275 + 0.175 * self.left_stick[0]
-        if MODE_RIGHT == "step_frequency":
-            min_freq = 2.0
-            max_freq = 4.0
-            cmd_freq = (1 + self.right_stick[1]) / 2 * (max_freq - min_freq) + min_freq
-        elif MODE_RIGHT == "footswing_height":
-            cmd_footswing = max(0, self.right_stick[1]) * 0.32 + 0.03
-        elif MODE_RIGHT == "body_pitch":
-            cmd_ori_pitch = -0.4 * self.right_stick[1]
-
-        # gait buttons
+        
         if self.mode == 0:
-            self.cmd_phase = 0.5
-            self.cmd_offset = 0.0
-            self.cmd_bound = 0.0
-            self.cmd_duration = 0.5
-        elif self.mode == 1:
-            self.cmd_phase = 0.0
-            self.cmd_offset = 0.0
-            self.cmd_bound = 0.0
-            self.cmd_duration = 0.5
-        elif self.mode == 2:
-            self.cmd_phase = 0.0
-            self.cmd_offset = 0.5
-            self.cmd_bound = 0.0
-            self.cmd_duration = 0.5
-        elif self.mode == 3:
-            self.cmd_phase = 0.0
-            self.cmd_offset = 0.0
-            self.cmd_bound = 0.5
-            self.cmd_duration = 0.5
-        else:
-            self.cmd_phase = 0.5
-            self.cmd_offset = 0.0
-            self.cmd_bound = 0.0
-            self.cmd_duration = 0.5
-
-        # up dpad
-        if self.mode == 4:
-            self.policy=1    # stairs
-
-            cmd_freq = 2.0
-            cmd_footswing = 0.30
-
-        elif self.mode == 5:
             self.policy=0    # walk
 
-            cmd_freq = 3.0
-            cmd_footswing = 0.08
+        elif self.mode == 1:
+            self.policy=1    # stair
 
-        elif self.mode == 6:
+
+        elif self.mode == 2:
             self.policy= 2   # duck
 
-            cmd_freq = 3.0
-            cmd_footswing = 0.08
-            cmd_body = -0.2
-
-        # elif self.mode==5: #right dpad
-        #     self.use_commandnet=True
-        #     print('Using CommandNet')
-
-        # elif self.mode==7: #left dpad
-        #     self.use_commandnet=False
+        elif self.mode == 5:
+            print('Using NN')
+            self.use_commandnet=True
+    
         
 
         comms = np.array([cmd_x, cmd_y, cmd_yaw, self.policy])
-        #print(comms)
+
         return comms
 
     def nn_commands(self,img):
-        if self.mode == 7:
+        if self.mode==7:
             print('Stopping NN...')
             self.use_commandnet = False
 

@@ -13,7 +13,7 @@ class realsense_lcmt(object):
     __slots__ = ["commands"]
 
     def __init__(self):
-        self.commands = [ 0.0 for dim0 in range(6) ]
+        self.commands = [ 0.0 for dim0 in range(4) ]
 
     def encode(self):
         buf = BytesIO()
@@ -22,7 +22,7 @@ class realsense_lcmt(object):
         return buf.getvalue()
 
     def _encode_one(self, buf):
-        buf.write(struct.pack('>6f', *self.commands[:6]))
+        buf.write(struct.pack('>4f', *self.commands[:4]))
 
     def decode(data):
         if hasattr(data, 'read'):
@@ -36,14 +36,14 @@ class realsense_lcmt(object):
 
     def _decode_one(buf):
         self = realsense_lcmt()
-        self.commands = struct.unpack('>6f', buf.read(24))
+        self.commands = struct.unpack('>4f', buf.read(16))
         return self
     _decode_one = staticmethod(_decode_one)
 
     _hash = None
     def _get_hash_recursive(parents):
         if realsense_lcmt in parents: return 0
-        tmphash = (0x476d343daaf897ab) & 0xffffffffffffffff
+        tmphash = (0x476d343daaf897a9) & 0xffffffffffffffff
         tmphash  = (((tmphash<<1)&0xffffffffffffffff)  + (tmphash>>63)) & 0xffffffffffffffff
         return tmphash
     _get_hash_recursive = staticmethod(_get_hash_recursive)

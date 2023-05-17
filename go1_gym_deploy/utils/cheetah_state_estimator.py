@@ -199,21 +199,21 @@ class StateEstimator:
             self.cmd_offset = 0.0
             self.cmd_bound = 0.0
             self.cmd_duration = 0.5
-        elif self.mode == 1:
-            self.cmd_phase = 0.0
-            self.cmd_offset = 0.0
-            self.cmd_bound = 0.0
-            self.cmd_duration = 0.5
-        elif self.mode == 2:
-            self.cmd_phase = 0.0
-            self.cmd_offset = 0.5
-            self.cmd_bound = 0.0
-            self.cmd_duration = 0.5
-        elif self.mode == 3:
-            self.cmd_phase = 0.0
-            self.cmd_offset = 0.0
-            self.cmd_bound = 0.5
-            self.cmd_duration = 0.5
+        # elif self.mode == 1:
+        #     self.cmd_phase = 0.0
+        #     self.cmd_offset = 0.0
+        #     self.cmd_bound = 0.0
+        #     self.cmd_duration = 0.5
+        # elif self.mode == 2:
+        #     self.cmd_phase = 0.0
+        #     self.cmd_offset = 0.5
+        #     self.cmd_bound = 0.0
+        #     self.cmd_duration = 0.5
+        # elif self.mode == 3:
+        #     self.cmd_phase = 0.0
+        #     self.cmd_offset = 0.0
+        #     self.cmd_bound = 0.5
+        #     self.cmd_duration = 0.5
         else:
             self.cmd_phase = 0.5
             self.cmd_offset = 0.0
@@ -377,7 +377,6 @@ class StateEstimator:
             print("Image received from camera with unknown ID#!")
 
     def _rs_commanddata_cb(self, channel, data):
-        print(data)
 
         msg = realsense_lcmt.decode(data)
 

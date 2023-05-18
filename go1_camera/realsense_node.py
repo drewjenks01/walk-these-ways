@@ -133,20 +133,22 @@ class RealSense:
         finetune= True
         deploy=True
         num_classes = 3
-        self.model = CommandNet(model_name=model_name,
-                        demo_folder=demo_folder, 
-                        deploy=deploy, 
-                        use_memory=use_memory, 
-                        multi_command=multi_command, 
-                        scaled_commands=scale_commands,
-                        finetune=finetune,
-                        num_classes=num_classes)
+        predict_commands = False
+        # self.model = CommandNet(model_name=model_name,
+        #                 demo_folder=demo_folder, 
+        #                 deploy=deploy, 
+        #                 use_memory=use_memory, 
+        #                 multi_command=multi_command, 
+        #                 scaled_commands=scale_commands,
+        #                 finetune=finetune,
+        #                 num_classes=num_classes,
+        #                 predict_commands=predict_commands)
 
-        if not self.model.use_memory:
-            # fake inference data to cache model
-            fake_data=torch.zeros(size=(1,3,224,224)).cuda()
-            self.model(fake_data)
-            print('NN is ready!')
+        # if not self.model.use_memory:
+        #     # fake inference data to cache model
+        #     fake_data=torch.zeros(size=(1,3,224,224)).cuda()
+        #     self.model(fake_data)
+        #     print('NN is ready!')
 
 
         os.system(f'sudo chown -R $USER {self.log_root}')
@@ -329,25 +331,25 @@ class RealSense:
             
             if self.image_type=='rgb':
                 color_frame = aligned_framed.get_color_frame()
-                color_image = color_image.copy()
                 color_image = np.asanyarray(color_frame.get_data())
+                color_image = color_image.copy()
                 imgs['Image1st'] = color_image
             
             elif self.image_type == 'depth':
                 depth_frame = aligned_framed.get_depth_frame()
-                depth_image = depth_image.copy()
                 depth_image = np.asanyarray(self.colorizer.colorize(depth_frame).get_data())
+                depth_image = depth_image.copy()
                 imgs['DepthImg'] = depth_image
 
             elif self.image_type == 'both':
                 color_frame = aligned_framed.get_color_frame()
                 depth_frame = aligned_framed.get_depth_frame()
 
-                color_image = color_image.copy()
-                depth_image = depth_image.copy()
-
                 color_image = np.asanyarray(color_frame.get_data())
                 depth_image = np.asanyarray(self.colorizer.colorize(depth_frame).get_data())
+
+                color_image = color_image.copy()
+                depth_image = depth_image.copy()
 
                 imgs['Image1st'] = color_image
                 imgs['DepthImg'] = depth_image

@@ -14,7 +14,7 @@ import shutil
 
 class Demo:
 
-    def __init__(self,log_root , log_view_folder=None,extract=False, use_nn = False, save_video = False, use_rgb_viewing=False, run_num = None):
+    def __init__(self,log_root , image_type=None, log_view_folder=None,extract=False, use_nn = False, save_video = False, use_rgb_viewing=False, run_num = None):
 
         # log attributes
         self.log_root = log_root
@@ -32,6 +32,7 @@ class Demo:
         self.run_num = run_num
         self.log_path = f'{self.log_save_path}run{run_num}'
         self.extract = extract
+        self.image_type = image_type
 
         self.fps = 6
 
@@ -271,7 +272,7 @@ class Demo:
         if just_vid:
             num_plots=1
         else:
-            num_plots=3
+            num_plots=2
 
         fig,ax=plt.subplots(1,num_plots)
         fig.set_size_inches(20,10)
@@ -279,13 +280,12 @@ class Demo:
 
 
         if not just_vid:
-            ax[0].set_title('RGB')
-            ax[1].set_title('Depth')
+            ax[0].set_title('Image')
 
             if self.use_nn:
-                ax[2].text(0.01, 0.5, 'Pred Commands: \n True Commands: ')
+                ax[1].text(0.01, 0.5, 'Pred Commands: \n True Commands: ')
             else:
-                ax[2].text(0.01, 0.5, 'Commands: ')
+                ax[1].text(0.01, 0.5, 'Commands: ')
         else:
             ax.set_title('RGB')
 
@@ -294,8 +294,9 @@ class Demo:
 
             img_rgb = rgb[f]
             img= process_deployed(img_rgb)
-            if depth:
+            if self.image_type == 'both':
                 img_depth = depth[f]
+                img_rgb = np.hstack((img_rgb,img_depth))
 
             
             if self.use_nn:
@@ -342,11 +343,9 @@ class Demo:
 
                 # depth, commands
                 if not just_vid:
-                    m += [ax[0].imshow(to_pil(show_img),animated=True)]
+                    m += [ax[0].imshow(show_img,animated=True)]
 
-                    m+=[ax[1].imshow(process_depth(img_depth),animated=True)]
-
-                    m+=[ax[2].text(0.01, 0.5, f'Commands: {rounded_comms[f]}')]
+                    m+=[ax[1].text(0.01, 0.5, f'Commands: {rounded_comms[f]}')]
 
                 else:
                     m += [ax.imshow(to_pil(show_img),animated=True)]
@@ -640,20 +639,21 @@ if __name__ == "__main__":
 
     log_root = f'navigation/robot_demos/jenkins_experiment/'
     #log_root = f'navigation/robot_demos/icra_trials/'
-    log_view_folder = 'stata'
+    log_view_folder = 'curr_run'
 
     
-    extract = False
+    extract = True
     save_video = False
 
     use_nn = False
     use_rgb = True
+    image_type = 'both'
 
     runs = [1]
     #runs=[1]
     
     for run in runs:
-        demo = Demo(log_root=log_root, log_view_folder = log_view_folder,run_num=run, extract = extract, save_video=save_video, use_nn=use_nn, use_rgb_viewing=use_rgb)
+        demo = Demo(log_root=log_root, image_type = image_type,log_view_folder = log_view_folder,run_num=run, extract = extract, save_video=save_video, use_nn=use_nn, use_rgb_viewing=use_rgb)
         demo.update_demos()
         demo.view_video(just_vid=True)
 

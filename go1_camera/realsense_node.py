@@ -365,23 +365,24 @@ class RealSense:
         # default values
         cmd_y = 0.  # -1 * self.left_stick[0]
         
-        if self.mode == 0:
+        if self.mode == 5:
             self.policy=0    # walk
 
-        elif self.mode == 1:
+        elif self.mode == 4:
             self.policy=1    # stair
 
 
-        elif self.mode == 2:
+        elif self.mode == 6:
             self.policy= 2   # duck
 
-        elif self.mode == 5:
-            print('Using NN')
-            self.use_commandnet=True
+        # elif self.mode == 5:
+        #     print('Using NN')
+        #     self.use_commandnet=True
     
         
 
         comms = np.array([cmd_x, cmd_y, cmd_yaw, self.policy])
+        #print(comms)
 
         return comms
 

@@ -256,7 +256,7 @@ class VisionControllerProfile(RCControllerProfile):
             if commands[0]<0:
                 se_mode = 0
 
-            if se_mode==1:  # if UP arrow recorded on controller
+            if se_mode==4:  # if UP arrow recorded on controller
                 self.policy = 'stairs' # stair policy
 
                 self.yaw_bool=True
@@ -266,7 +266,7 @@ class VisionControllerProfile(RCControllerProfile):
                 commands[9] = 0.30      # footswing height
 
 
-            elif se_mode==0: # if RIGHT arrow record on controller
+            elif se_mode==5: # if RIGHT arrow record on controller
                 self.policy = 'walk' # walk policy
 
                 self.yaw_bool=False
@@ -276,7 +276,7 @@ class VisionControllerProfile(RCControllerProfile):
                 commands[9] = 0.08
             
             
-            elif se_mode==2: # if DOWN arrow record on controller
+            elif se_mode==6: # if DOWN arrow record on controller
                 self.policy = 'walk' # walk policy, duck
 
                 self.yaw_bool=False

@@ -746,12 +746,12 @@ class CommandNet(nn.Module):
                     for k in demo:
 
                         if k == 'Commands':
-                            if i in [14]:
+                            if i in [0]:
                                 test_comms += demo[k]
                             else:
                                 comms += demo[k]
                         elif k == 'Image1st':
-                            if i in [14]:
+                            if i in [0]:
                                 test_images += demo[k]
                             else:
                                 images += demo[k]
@@ -852,6 +852,15 @@ class CommandNet(nn.Module):
         #     test_unbatched.append([test_comms[i], test_images[i]])
 
         # self.plot_data(test_unbatched[0], 'test unbatched')
+
+
+        policy_counts = {0:0,1:0,2:0}
+
+        for i in range(len(comms)):
+            policy_counts[int(comms[i][-1])]+=1
+
+        print('Train policy counts:', policy_counts)
+        
 
         # ------------------------
         # IMAGE PROCESSING

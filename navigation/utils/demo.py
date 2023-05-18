@@ -642,20 +642,20 @@ if __name__ == "__main__":
     log_view_folder = 'curr_run'
 
     
-    extract = True
+    extract = False
     save_video = False
 
     use_nn = False
     use_rgb = True
     image_type = 'both'
 
-    runs = [1]
+    runs = list(range(1,23))
     #runs=[1]
     
     for run in runs:
         demo = Demo(log_root=log_root, image_type = image_type,log_view_folder = log_view_folder,run_num=run, extract = extract, save_video=save_video, use_nn=use_nn, use_rgb_viewing=use_rgb)
         demo.update_demos()
-        demo.view_video(just_vid=True)
+        demo.view_video(just_vid=False)
 
         #demo.view_single(indx=0, save_rgb=True)
         #demo.create_performance_plot()

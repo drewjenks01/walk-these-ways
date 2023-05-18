@@ -286,11 +286,11 @@ class VisionControllerProfile(RCControllerProfile):
                 commands[9] = 0.08
 
         
-        if se_mode == 5:
-            self.use_commandnet=True
+        # if se_mode == 5:
+        #     self.use_commandnet=True
 
-        elif se_mode == 7:
-            self.use_commandnet=False
+        # elif se_mode == 7:
+        #     self.use_commandnet=False
 
 
         # randomize drifts every 5 seconds

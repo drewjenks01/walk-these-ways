@@ -36,8 +36,14 @@ class Demo:
         self.fps = 6
 
         if self.use_nn:
-            self.model = CommandNet(model_name='resnet18', demo_folder='simple', scaled_commands=False)
-            self.model.load_trained()
+            self.model = CommandNet(model_name='mnv3s', 
+            demo_folder='stata', 
+            scaled_commands=False, 
+            use_memory=False, 
+            deploy=True, 
+            finetune=True, 
+            multi_command=True,
+            num_classes=3)
         
         elif self.extract:
             self.extract_from_robot()
@@ -156,7 +162,7 @@ class Demo:
         print('Collected data count:', len(self.log['Commands']))
 
         time_val = time.time()-self.log_start_time
-        if time_val>=5:
+        if time_val>=2.0:
             self.save_partial_log()
     
     def extract_from_robot(self):
@@ -287,13 +293,19 @@ class Demo:
         for f in tqdm(range(len(rgb))):
 
             img_rgb = rgb[f]
-            img= process_deployed(img_rgb)[0]
+            img= process_deployed(img_rgb)
             if depth:
                 img_depth = depth[f]
 
             
             if self.use_nn:
-                commands, policy = self.model(img)
+                if self.model.use_memory and not self.model.memory_filled:
+
+                    self.model.forward(img)
+                    # self._fill_memory()
+                    continue
+                else:
+                    commands, policy = self.model.forward(img)
                 commands, policy = self.model._data_rescale(commands, policy)
 
                 commands.append(policy)
@@ -304,9 +316,10 @@ class Demo:
 
                 # depth, commands
                 if not just_vid:
-                    m += [ax[0].imshow(to_pil(img),animated=True)]
+                    m += [ax[0].imshow(to_pil(img[0]),animated=True)]
 
-                    m+=[ax[1].imshow(process_depth(img_depth),animated=True)]
+                    if depth:
+                        m+=[ax[1].imshow(process_depth(img_depth),animated=True)]
 
                     m+=[ax[2].text(0.01, 0.5, f'Pred Commands: {commands}\n True Commands: {rounded_comms[f]}')]
                 
@@ -627,7 +640,7 @@ if __name__ == "__main__":
 
     log_root = f'navigation/robot_demos/jenkins_experiment/'
     #log_root = f'navigation/robot_demos/icra_trials/'
-    log_view_folder = 'curtain'
+    log_view_folder = 'stata'
 
     
     extract = False
@@ -636,7 +649,7 @@ if __name__ == "__main__":
     use_nn = False
     use_rgb = True
 
-    runs = [1,2,3,4,5,6,7,8,9,10]
+    runs = [1]
     #runs=[1]
     
     for run in runs:

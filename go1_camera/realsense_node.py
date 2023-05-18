@@ -239,6 +239,11 @@ class RealSense:
                 elif self.image_type=='depth':
                     demo_data['DepthImg'] = camera_imgs['DepthImg']
 
+                elif self.image_type == 'both':
+                    demo_data['Image1st'] = camera_imgs['Image1st']
+                    demo_data['DepthImg'] = camera_imgs['DepthImg']
+
+
                 demo.collect_demo_data(data = demo_data)
 
 
@@ -277,9 +282,17 @@ class RealSense:
                 config.enable_stream(rs.stream.color, 640, 480, rs.format.rgb8, 30)
                 align_to = rs.stream.color
 
-            if self.image_type == 'depth':
+            elif self.image_type == 'depth':
+                self.colorizer = rs.colorizer()
                 config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
                 align_to = rs.stream.depth
+
+            elif self.image_type == 'both':
+                self.colorizer = rs.colorizer()
+                config.enable_stream(rs.stream.color, 640, 480, rs.format.rgb8, 30)
+                config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+                align_to = rs.stream.color
+
             
             profile = self.rs_pipeline.start(config)
 
@@ -316,15 +329,29 @@ class RealSense:
             
             if self.image_type=='rgb':
                 color_frame = aligned_framed.get_color_frame()
-                color_image = np.asanyarray(color_frame.get_data())
                 color_image = color_image.copy()
+                color_image = np.asanyarray(color_frame.get_data())
                 imgs['Image1st'] = color_image
             
             elif self.image_type == 'depth':
                 depth_frame = aligned_framed.get_depth_frame()
-                depth_image = np.asanyarray(depth_frame.get_data())
                 depth_image = depth_image.copy()
+                depth_image = np.asanyarray(self.colorizer.colorize(depth_frame).get_data())
                 imgs['DepthImg'] = depth_image
+
+            elif self.image_type == 'both':
+                color_frame = aligned_framed.get_color_frame()
+                depth_frame = aligned_framed.get_depth_frame()
+
+                color_image = color_image.copy()
+                depth_image = depth_image.copy()
+
+                color_image = np.asanyarray(color_frame.get_data())
+                depth_image = np.asanyarray(self.colorizer.colorize(depth_frame).get_data())
+
+                imgs['Image1st'] = color_image
+                imgs['DepthImg'] = depth_image
+
 
         return imgs
 
@@ -371,6 +398,7 @@ class RealSense:
 
         commands.append(policy)
         commands = np.array(commands)
+        print(commands)
 
         self.rs_commanddata_cb(commands)
         return commands
@@ -495,5 +523,5 @@ class RealSense:
 if __name__ == '__main__':
 
     camera_type = 'realsense'
-    image_type = 'rgb'
+    image_type = 'both'
     rs = RealSense(camera_type=camera_type, image_type=image_type)

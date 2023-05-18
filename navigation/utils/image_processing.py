@@ -2,6 +2,7 @@ import torch
 import cv2
 import numpy as np
 from torchvision import transforms
+from torchvision.transforms import functional
 
 
 def process_image(img):
@@ -70,13 +71,20 @@ def augment_image(img,check=False):
         transforms.RandomVerticalFlip(1.0)]
     )
 
-    augments = [rotate_l,rotate_r]
-    augment_names = ['original', 'rl','rr']
+    bright = functional.adjust_brightness(img,1.5)
+
+    dark =  functional.adjust_brightness(img,0.5)
+
+
+    augments = []
+    augment_names = ['original', 'rl','rr', 'blur','brihgt','dark']
 
     augmented_images = [img]
 
     for aug in augments:
         augmented_images.append(aug(img))
+
+    augmented_images+=[bright,dark]
 
 
     # if check:

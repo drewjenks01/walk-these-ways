@@ -132,9 +132,9 @@ class CommandNet(nn.Module):
             self.batch_size=64
             self.weight_decay = 1e-3
         else:
-            self.lr = 1e-3
+            self.lr = 2e-3
             self.main_lr = 2e-4
-            self.epochs = 8
+            self.epochs = 14
             self.weight_decay = 2e-3
 
         # --------------------------------
@@ -188,10 +188,13 @@ class CommandNet(nn.Module):
             self.fc_input_shape = 440
 
         elif self.model_name == 'dino':
-            self.commandnet = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
+            if self.deploy:
+                self.commandnet = torch.hub.load('/home/unitree/.cache/torch/hub/facebookresearch_dinov2_main', 'dinov2_vits14', source='local')
+            else:
+                self.commandnet = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
             self.fc_input_shape = 384
 
-            print(self.commandnet)
+            #print(self.commandnet)
 
          # memory
         if self.use_memory:
@@ -216,7 +219,7 @@ class CommandNet(nn.Module):
         self.models['main'] = self.commandnet
 
         if self.predict_commands:
-            self.gaits = ['x', 'y', 'yaw', 'policy']
+            self.gaits = ['x', 'yaw', 'policy']
         else:
             self.gaits = ['policy']
 
@@ -225,21 +228,19 @@ class CommandNet(nn.Module):
             # make final layers
             self.command_layer = nn.Sequential(
                 nn.Linear(self.fc_input_shape, 16),
-                nn.Dropout(),
+                #nn.Dropout(),
                 nn.ReLU(),
                 nn.Linear(16,8),
-                nn.Dropout(),
+                #nn.Dropout(),
                 nn.ReLU(),
                 nn.Linear(8, 1)
             )
 
             if predict_commands:
                 x = deepcopy(self.command_layer)
-                y = deepcopy(self.command_layer)
                 yaw = deepcopy(self.command_layer)
 
                 self.models['x'] = x
-                self.models['y'] = y
                 self.models['yaw'] = yaw
 
             policy = nn.Sequential(
@@ -404,11 +405,10 @@ class CommandNet(nn.Module):
             # output through command regression layer
             if self.multi_command:
                 policy = self.models['policy'](output)
-                if predict_commands:
+                if self.predict_commands:
                     x = self.models['x'](output)
-                    y = self.models['y'](output)
                     yaw = self.models['yaw'](output)
-                    commands = [x, y, yaw]
+                    commands = [x, yaw]
 
                     return commands, policy
 
@@ -746,12 +746,12 @@ class CommandNet(nn.Module):
                     for k in demo:
 
                         if k == 'Commands':
-                            if i in [0]:
+                            if i in [18]:
                                 test_comms += demo[k]
                             else:
                                 comms += demo[k]
                         elif k == 'Image1st':
-                            if i in [0]:
+                            if i in [18]:
                                 test_images += demo[k]
                             else:
                                 images += demo[k]
@@ -801,6 +801,14 @@ class CommandNet(nn.Module):
 
             print('Flipped train & test length:', len(comms), len(test_comms))
 
+
+        # remove y vals
+        for i in range(len(comms)):
+            comms[i].pop(1)
+
+        for i in range(len(test_comms)):
+            test_comms[i].pop(1)
+
         comms = np.array(comms)
         test_comms = np.array(test_comms)
 
@@ -828,10 +836,13 @@ class CommandNet(nn.Module):
 
             mini = all_comms.min(axis=0)
             ptp = all_comms.ptp(axis=0)
+           
+            mini=mini[:-1]
+            ptp = ptp[:-1]
             self.data_rescales = [mini, ptp]
             print('rescales:', self.data_rescales)
 
-            for i in range(len(self.data_rescales[0])-1):
+            for i in range(len(self.data_rescales[0])):
                 comms[:, i] = (comms[:, i]-mini[i])/ptp[i]
                 test_comms[:, i] = (test_comms[:, i]-mini[i])/ptp[i]
 
@@ -1111,15 +1122,13 @@ class CommandNet(nn.Module):
         policy = policy.detach().item()
 
         if self.scale_commands:
-            commands.append(policy)
+            #commands.append(policy)
 
             commands = np.array(commands)
-            commands[:-1] = np.clip(commands[:-1], 0.0, 1.0)
+            commands= np.clip(commands, 0.0, 1.0)
             commands = commands*self.data_rescales[1]+self.data_rescales[0]
 
             commands = list(commands)
-            policy = commands[-1]
-            commands = commands[:-1]
 
         return commands, policy
 
@@ -1483,7 +1492,7 @@ class CommandNet(nn.Module):
 
         eval_preds, eval_labels = self.evaluate_full_demo()
         eval_keys = log_keys[1:]
-        fig, ax = plt.subplots(num_rows+1, 2, sharey=False, figsize=(15, 15))
+        fig, ax = plt.subplots(num_rows, 2, sharey=False, figsize=(15, 15))
         fig.suptitle(f'Full test demo')
         count = 0
         for i in range(num_rows):
@@ -1491,7 +1500,6 @@ class CommandNet(nn.Module):
                 if i*2+j+1>len(eval_keys):
                     continue    
                 
-                print(eval_keys,count)
                 ax[i, j].plot(range(len(eval_preds[eval_keys[count]])),
                               eval_preds[eval_keys[count]], label='Pred')
                 ax[i, j].plot(range(len(eval_labels[eval_keys[count]])),
@@ -1519,13 +1527,24 @@ class CommandNet(nn.Module):
         # load all models
         for model_type in self.models:
             print(f'Loading model type: {model_type}')
-            self.models[model_type].load_state_dict(load_model[model_type])
+            if model_type=='main' and self.model_name=='dino':
+                self.models['main'].cuda()
+                self.models['main'].eval()
+                continue
+            else:
+                self.models[model_type].load_state_dict(load_model[model_type])
             self.models[model_type].cuda()
 
             if self.deploy:
                 # set into eval mode
                 self.models[model_type].eval()
                 print('Eval mode')
+
+
+        print('Eval check:')
+        for model_type in self.models:
+            print('Training?:',self.models[model_type].training)
+
 
     def _reset_memory(self):
 
@@ -1617,7 +1636,7 @@ if __name__ == '__main__':
 
     num_classes = 3
 
-    model = ['resnet50']
+    model = ['dino']
     for m in model:
 
         finetune = False
@@ -1637,21 +1656,21 @@ if __name__ == '__main__':
         
         cnn.train_model()
 
-        finetune = True
+        # finetune = True
 
-        cnn = CommandNet(demo_type=demo_type,
-                         model_name=m,
-                         demo_folder=demo_folder,
-                         deploy=deploy,
-                         scaled_commands=scaled_commands,
-                         finetune=finetune,
-                         use_memory=use_memory,
-                         use_flipped=use_flipped,
-                         multi_command=multi_command,
-                         num_classes=num_classes,
-                         predict_commands=predict_commands)
+        # cnn = CommandNet(demo_type=demo_type,
+        #                  model_name=m,
+        #                  demo_folder=demo_folder,
+        #                  deploy=deploy,
+        #                  scaled_commands=scaled_commands,
+        #                  finetune=finetune,
+        #                  use_memory=use_memory,
+        #                  use_flipped=use_flipped,
+        #                  multi_command=multi_command,
+        #                  num_classes=num_classes,
+        #                  predict_commands=predict_commands)
 
-        cnn.train_model()
+        # cnn.train_model()
 
 
 # %%

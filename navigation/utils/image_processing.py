@@ -15,6 +15,7 @@ def process_image(img):
         transforms.ToPILImage(),
         transforms.Resize(256),
         transforms.CenterCrop(224),
+        #transforms.Grayscale(num_output_channels=3),
         transforms.ToTensor(),
         ])
 
@@ -76,7 +77,7 @@ def augment_image(img,check=False):
     dark =  functional.adjust_brightness(img,0.5)
 
 
-    augments = []
+    augments = [gauss_blur]
     augment_names = ['original', 'rl','rr', 'blur','brihgt','dark']
 
     augmented_images = [img]

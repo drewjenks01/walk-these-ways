@@ -219,7 +219,7 @@ class VisionControllerProfile(RCControllerProfile):
         #print('received command',self.state_estimator.realsense_commands)
 
         if self.use_commandnet:
-            x_cmd , y_cmd, yaw_cmd, policy = self.state_estimator.realsense_commands
+            x_cmd , yaw_cmd, policy = self.state_estimator.realsense_commands
             
             if policy==1:
                 self.policy='stairs'
@@ -241,14 +241,16 @@ class VisionControllerProfile(RCControllerProfile):
                 commands[4] = 3.0
                 commands[9] = 0.08
 
-            commands[0] = x_cmd
-            commands[1]= y_cmd
-            commands[2] = yaw_cmd
+            # commands[0] = x_cmd
+            # commands[2] = yaw_cmd
 
-            # multipliers
-            commands[0] = commands[0] * self.x_scale
-            commands[1] = commands[1] * self.y_scale
-            commands[2] = commands[2] * self.yaw_scale
+            # # multipliers
+            # commands[0] = commands[0] * self.x_scale
+            # commands[2] = commands[2] * self.yaw_scale
+
+            if se_mode!=7:
+                print('Stopping NN')
+                self.use_commandnet=False
 
         else:
 
@@ -285,12 +287,9 @@ class VisionControllerProfile(RCControllerProfile):
                 commands[4] = 3.0
                 commands[9] = 0.08
 
-        
-        # if se_mode == 5:
-        #     self.use_commandnet=True
-
-        # elif se_mode == 7:
-        #     self.use_commandnet=False
+            elif se_mode == 7:
+                print('Using NN')
+                self.use_commandnet=True
 
 
         # randomize drifts every 5 seconds

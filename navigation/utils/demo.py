@@ -151,7 +151,10 @@ class Demo:
         for k in self.frame_commands:
             if k != 'count':
                 avg_comms.append(self.frame_commands[k]/self.frame_commands['count'])
+
+        avg_comms[-1] = round(avg_comms[-1])
         self.log['Commands'].append(avg_comms)
+
 
         for k in data:
             self.log[k].append(data[k])
@@ -274,7 +277,7 @@ class Demo:
         else:
             num_plots=2
 
-        fig,ax=plt.subplots(1,num_plots)
+        fig,ax=plt.subplots(1,num_plots, gridspec_kw={'width_ratios':[3,1]})
         fig.set_size_inches(20,10)
         fig.suptitle(f'Run{self.run_num}')
 
@@ -353,7 +356,7 @@ class Demo:
 
                 movie.append(m)
         
-        ani = animation.ArtistAnimation(fig,movie,interval=100,blit=True)
+        ani = animation.ArtistAnimation(fig,movie,interval=50,blit=True)
 
         if self.save_video:
             ani.save(f'video_run{self.run_num}.mp4',fps=8,bitrate=-1,codec="libx264")
@@ -649,8 +652,8 @@ if __name__ == "__main__":
     use_rgb = True
     image_type = 'both'
 
-    runs = list(range(1,23))
-    #runs=[1]
+    #runs = list(range(1,21))[::-1]
+    runs=[26]
     
     for run in runs:
         demo = Demo(log_root=log_root, image_type = image_type,log_view_folder = log_view_folder,run_num=run, extract = extract, save_video=save_video, use_nn=use_nn, use_rgb_viewing=use_rgb)

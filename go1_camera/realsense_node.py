@@ -125,30 +125,30 @@ class RealSense:
 
 
         #commandnet info
-        model_name = 'mnv3s'
+        model_name = 'dino'
         demo_folder = 'stata'
         use_memory=False
         multi_command = True
-        scale_commands = True
-        finetune= True
+        scale_commands = False
+        finetune= False
         deploy=True
         num_classes = 3
         predict_commands = False
-        # self.model = CommandNet(model_name=model_name,
-        #                 demo_folder=demo_folder, 
-        #                 deploy=deploy, 
-        #                 use_memory=use_memory, 
-        #                 multi_command=multi_command, 
-        #                 scaled_commands=scale_commands,
-        #                 finetune=finetune,
-        #                 num_classes=num_classes,
-        #                 predict_commands=predict_commands)
+        self.model = CommandNet(model_name=model_name,
+                        demo_folder=demo_folder, 
+                        deploy=deploy, 
+                        use_memory=use_memory, 
+                        multi_command=multi_command, 
+                        scaled_commands=scale_commands,
+                        finetune=finetune,
+                        num_classes=num_classes,
+                        predict_commands=predict_commands)
 
-        # if not self.model.use_memory:
-        #     # fake inference data to cache model
-        #     fake_data=torch.zeros(size=(1,3,224,224)).cuda()
-        #     self.model(fake_data)
-        #     print('NN is ready!')
+        if not self.model.use_memory:
+            # fake inference data to cache model
+            fake_data=torch.zeros(size=(1,3,224,224)).cuda()
+            self.model(fake_data)
+            print('NN is ready!')
 
 
         os.system(f'sudo chown -R $USER {self.log_root}')
@@ -166,7 +166,7 @@ class RealSense:
 
         while True:
             # if self.timestep % 10 == 0 and self.timestep!=0: 
-            #     print(f'frq: {10 / (time.time() - self.time)} Hz');
+            #     print(f'frq: {10 / (time.time() - self.time)} Hz')
             #     self.time = time.time()
 
             if self.right_lower_right_switch_pressed:
@@ -225,7 +225,7 @@ class RealSense:
 
             # log commands and image
             if self.logging:
-                frame_comms = {'x':comms[0],'y':comms[1],'yaw':comms[2],'policy':comms[3]}
+                frame_comms = {'x':comms[0],'yaw':comms[1],'policy':comms[2]}
                 demo.collect_frame_commands(frame_comms)
 
             if self.logging and time.time()-fps_logging>=1/demo.fps and len(comms)>0:
@@ -301,7 +301,10 @@ class RealSense:
             align_to = rs.stream.color
             self.rs_align = rs.align(align_to)
 
-        print('Beginning log')
+        print('Priming camera...')
+        for _ in range(5):
+            self.capture_realsense_img()
+        print('Begin logging')
 
 
     def terminate_realsense(self):
@@ -362,8 +365,6 @@ class RealSense:
         cmd_x = 1 * self.left_stick[1]
         cmd_yaw = -1 * self.right_stick[0]
 
-        # default values
-        cmd_y = 0.  # -1 * self.left_stick[0]
         
         if self.mode == 5:
             self.policy=0    # walk
@@ -375,19 +376,19 @@ class RealSense:
         elif self.mode == 6:
             self.policy= 2   # duck
 
-        # elif self.mode == 5:
-        #     print('Using NN')
-        #     self.use_commandnet=True
+        elif self.mode == 7:    # NN
+            print('Using NN')
+            self.use_commandnet=True
     
         
 
-        comms = np.array([cmd_x, cmd_y, cmd_yaw, self.policy])
+        comms = np.array([cmd_x, cmd_yaw, self.policy])
         #print(comms)
 
         return comms
 
     def nn_commands(self,img):
-        if self.mode==7:
+        if self.mode!=7:
             print('Stopping NN...')
             self.use_commandnet = False
 
@@ -398,6 +399,9 @@ class RealSense:
         else:
             commands, policy = self.model.forward(img)
             commands, policy = self.model._data_rescale(commands, policy)
+
+        if not self.model.predict_commands:
+            commands = [0.0,0.0]
 
         commands.append(policy)
         commands = np.array(commands)

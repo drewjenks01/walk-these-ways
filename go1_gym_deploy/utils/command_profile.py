@@ -201,6 +201,10 @@ class VisionControllerProfile(RCControllerProfile):
         self.controller = 0   # 0=RC, 1=XBOX
         self.xbox=None
 
+        # boolean to tell whether camera is working during logging and NN
+        # -1 = not initialized, 0 = off, 1 = on
+        self.realsense_camera = -1
+
         # whether using domain randomization
         self.random_drift = random_drift
         if self.random_drift:
@@ -213,40 +217,53 @@ class VisionControllerProfile(RCControllerProfile):
 
         commands, reset_timer = super().get_command(t, probe)
 
+        # get status of camera
+        self.realsense_camera = self.state_estimator.realsense_camera
+
         # check if change controller command from rc
-        se_mode = self.state_estimator.mode
+            # if mode is to use NN but camera not initialized, then do not change mode
+        if self.state_estimator.mode == 7 and self.realsense_camera == -1:
+            print('Warning: tried to use NN without camera initialization.')
+        else:
+            se_mode = self.state_estimator.mode
 
         #print('received command',self.state_estimator.realsense_commands)
 
         if self.use_commandnet:
             x_cmd , yaw_cmd, policy = self.state_estimator.realsense_commands
             
-            if policy==1:
+            # walk policy
+            if policy==0:
+                self.policy='walk'
+                self.yaw_bool = False
+                commands[3] = 0.1
+                commands[4] = 3.0
+                commands[9] = 0.08
+
+            # stair policy
+            elif policy==1:
                 self.policy='stairs'
                 commands[3] = 0.1
                 commands[4] = 2.0       # step freq
                 commands[9] = 0.30      # footswing height
                 self.yaw_bool = True
-            elif policy==2:             # duck!
+            
+            # duck policy
+            elif policy==2:             
                 self.policy='walk'
                 self.yaw_bool = False
                 commands[3] = -0.2
                 commands[4] = 3.0
                 commands[9] = 0.08
 
-            elif policy==0:
-                self.policy='walk'
-                self.yaw_bool = False
-                commands[3] = 0.1
-                commands[4] = 3.0
-                commands[9] = 0.08
+            # check if commands were being predicted or not, scale and set if so
+            if x_cmd != -1.0 and yaw_cmd != -1.0:
+                commands[0] = x_cmd
+                commands[2] = yaw_cmd
 
-            # commands[0] = x_cmd
-            # commands[2] = yaw_cmd
-
-            # # multipliers
-            # commands[0] = commands[0] * self.x_scale
-            # commands[2] = commands[2] * self.yaw_scale
+                # multipliers
+                commands[0] = commands[0] * self.x_scale
+                commands[2] = commands[2] * self.yaw_scale
 
             if se_mode!=7:
                 print('Stopping NN')

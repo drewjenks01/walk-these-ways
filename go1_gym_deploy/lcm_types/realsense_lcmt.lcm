@@ -1,4 +1,5 @@
 struct realsense_lcmt
 {
     float commands[3];
+    int16_t camera;
 }

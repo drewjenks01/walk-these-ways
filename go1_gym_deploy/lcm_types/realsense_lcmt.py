@@ -10,10 +10,11 @@ except ImportError:
 import struct
 
 class realsense_lcmt(object):
-    __slots__ = ["commands"]
+    __slots__ = ["commands", "camera"]
 
     def __init__(self):
         self.commands = [ 0.0 for dim0 in range(3) ]
+        self.camera = 0
 
     def encode(self):
         buf = BytesIO()
@@ -23,6 +24,7 @@ class realsense_lcmt(object):
 
     def _encode_one(self, buf):
         buf.write(struct.pack('>3f', *self.commands[:3]))
+        buf.write(struct.pack(">h", self.camera))
 
     def decode(data):
         if hasattr(data, 'read'):
@@ -37,13 +39,14 @@ class realsense_lcmt(object):
     def _decode_one(buf):
         self = realsense_lcmt()
         self.commands = struct.unpack('>3f', buf.read(12))
+        self.camera = struct.unpack(">h", buf.read(2))[0]
         return self
     _decode_one = staticmethod(_decode_one)
 
     _hash = None
     def _get_hash_recursive(parents):
         if realsense_lcmt in parents: return 0
-        tmphash = (0x476d343daaf897a8) & 0xffffffffffffffff
+        tmphash = (0xc1f1f89fac5bef6c) & 0xffffffffffffffff
         tmphash  = (((tmphash<<1)&0xffffffffffffffff)  + (tmphash>>63)) & 0xffffffffffffffff
         return tmphash
     _get_hash_recursive = staticmethod(_get_hash_recursive)

@@ -148,6 +148,7 @@ class RealSense:
             # fake inference data to cache model
             fake_data=torch.zeros(size=(1,3,224,224)).cuda()
             self.model(fake_data)
+            self.rs_commanddata_cb([0.0,0.0,0.0,0])
             print('NN is ready!')
 
 

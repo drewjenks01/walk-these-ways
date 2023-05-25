@@ -21,6 +21,7 @@ torch.manual_seed(0)
 torch.cuda.manual_seed(0)
 np.random.seed(0)
 # print(torch.cuda.memory_summary(device='cuda', abbreviated=False))
+import shutil
 
 """
 CNN that takes in images as input and control commands as output
@@ -88,8 +89,25 @@ class CommandNet(nn.Module):
             self.demo_load_path = f'navigation/robot_demos/{self.demo_folder}' if demo_type == 'sim' else f'navigation/robot_demos/jenkins_experiment/{self.demo_folder}'
         self.rescale_path = f'{self.root_dir}/{command_type}/{self.demo_folder}/{self.model_name}/rescales.pkl'
 
-        if not os.path.exists(self.model_path):
+        # if not os.path.exists(self.model_path):
+        #     os.makedirs(self.model_path)
+
+
+        # update files
+        if os.path.exists(self.model_path+'_prev'):     # delete earliest run if exists
+            print('Removing previous run')
+            shutil.rmtree(self.model_path+'_prev')
+        
+        if not os.listdir(self.model_path):     # make model path if doesnt exist
+            print('Creating model dir')
             os.makedirs(self.model_path)
+        else:                                       # make it the previos run if it does exist
+            print('Shuffling model dirs')
+            os.rename(self.model_path, self.model_path+'_prev')
+            os.makedirs(self.model_path)
+            shutil.move(self.model_path+'_prev',self.model_path)
+
+
 
         # --------------------------------
         # DATA PARAMS
@@ -134,7 +152,7 @@ class CommandNet(nn.Module):
         else:
             self.lr = 2e-3
             self.main_lr = 2e-4
-            self.epochs = 14
+            self.epochs = 10
             self.weight_decay = 2e-3
 
         # --------------------------------
@@ -212,7 +230,7 @@ class CommandNet(nn.Module):
                 nn.Linear(250, self.mem_output_shape)
             )
             self.fc_input_shape = self.mem_output_shape * \
-                (self.memory_size+1)+4*(self.memory_size)
+                (self.memory_size+1)+ 3*(self.memory_size)
             self._reset_memory()
 
         # add all models
@@ -227,13 +245,16 @@ class CommandNet(nn.Module):
 
             # make final layers
             self.command_layer = nn.Sequential(
-                nn.Linear(self.fc_input_shape, 16),
-                #nn.Dropout(),
-                nn.ReLU(),
+                nn.Linear(self.fc_input_shape, 32),
+                nn.GELU(),
+                nn.Dropout(),
+                nn.Linear(32, 16),
+                nn.GELU(),
+                nn.Dropout(),
                 nn.Linear(16,8),
-                #nn.Dropout(),
-                nn.ReLU(),
-                nn.Linear(8, 1)
+                nn.GELU(),
+                nn.Dropout(),
+                nn.Linear(8,1),
             )
 
             if predict_commands:
@@ -244,13 +265,17 @@ class CommandNet(nn.Module):
                 self.models['yaw'] = yaw
 
             policy = nn.Sequential(
-               nn.Linear(self.fc_input_shape, 16),
+                nn.Linear(self.fc_input_shape, 32),
+                nn.GELU(),
                 nn.Dropout(),
-                nn.ReLU(),
+                nn.Linear(32, 16),
+                nn.GELU(),
+                nn.Dropout(),
                 nn.Linear(16,8),
+                nn.GELU(),
+                nn.Dropout(),
+                nn.Linear(8,self.num_classes),
                 #nn.Dropout(),
-                nn.ReLU(),
-                nn.Linear(8, self.num_classes)
             )
             self.models['policy'] = policy
 
@@ -1492,7 +1517,7 @@ class CommandNet(nn.Module):
 
         eval_preds, eval_labels = self.evaluate_full_demo()
         eval_keys = log_keys[1:]
-        fig, ax = plt.subplots(num_rows, 2, sharey=False, figsize=(15, 15))
+        fig, ax = plt.subplots(2, 2, sharey=False, figsize=(15, 15))
         fig.suptitle(f'Full test demo')
         count = 0
         for i in range(num_rows):
@@ -1550,7 +1575,7 @@ class CommandNet(nn.Module):
 
         # reset memory
         self.batch_memory = torch.empty(
-            size=(self.batch_size, 0, self.mem_output_shape+4), requires_grad=False).cuda()
+            size=(self.batch_size, 0, self.mem_output_shape+3), requires_grad=False).cuda()
 
         # reset filled boolean
         self.memory_filled = False
@@ -1596,17 +1621,19 @@ class CommandNet(nn.Module):
 
     def get_memory_zero_comm(self, tens):
 
-        zero_comm = np.array([0.0, 0.0, 0.0, 0.0])
+        zero_comm = np.array([0.0, 0.0])
 
         if self.scale_commands:
             zero_comm = (
                 zero_comm - self.data_rescales[0])/self.data_rescales[1]
 
+        zero_comm = np.concatenate((zero_comm, [0]))
+
         if tens:
             zero_comm = torch.tensor(
-                zero_comm, device=self.device).reshape(self.batch_size, 4)
+                zero_comm, device=self.device).reshape(self.batch_size, 3)
             zero_comm = zero_comm.repeat(self.batch_size, 1)
-            assert zero_comm.shape == (self.batch_size, 4), zero_comm.shape
+            assert zero_comm.shape == (self.batch_size, 3), zero_comm.shape
 
         return zero_comm
 
@@ -1632,7 +1659,7 @@ if __name__ == '__main__':
     use_memory = False
     use_flipped = False
     multi_command = True
-    predict_commands = False
+    predict_commands = True
 
     num_classes = 3
 
@@ -1656,21 +1683,21 @@ if __name__ == '__main__':
         
         cnn.train_model()
 
-        # finetune = True
+        finetune = True
 
-        # cnn = CommandNet(demo_type=demo_type,
-        #                  model_name=m,
-        #                  demo_folder=demo_folder,
-        #                  deploy=deploy,
-        #                  scaled_commands=scaled_commands,
-        #                  finetune=finetune,
-        #                  use_memory=use_memory,
-        #                  use_flipped=use_flipped,
-        #                  multi_command=multi_command,
-        #                  num_classes=num_classes,
-        #                  predict_commands=predict_commands)
+        cnn = CommandNet(demo_type=demo_type,
+                         model_name=m,
+                         demo_folder=demo_folder,
+                         deploy=deploy,
+                         scaled_commands=scaled_commands,
+                         finetune=finetune,
+                         use_memory=use_memory,
+                         use_flipped=use_flipped,
+                         multi_command=multi_command,
+                         num_classes=num_classes,
+                         predict_commands=predict_commands)
 
-        # cnn.train_model()
+        cnn.train_model()
 
 
 # %%

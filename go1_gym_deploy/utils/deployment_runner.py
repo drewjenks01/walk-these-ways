@@ -230,6 +230,7 @@ class DeploymentRunner:
                             control_obs = self.agents[self.control_agent_name].reset()
 
                 if self.command_profile.state_estimator.right_lower_right_switch_pressed:
+                    self.is_currently_probing=False
                     control_obs = self.calibrate(wait=False)
                     time.sleep(1)
                     self.command_profile.state_estimator.right_lower_right_switch_pressed = False

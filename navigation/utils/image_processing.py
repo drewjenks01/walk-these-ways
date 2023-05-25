@@ -4,18 +4,20 @@ import numpy as np
 from torchvision import transforms
 from torchvision.transforms import functional
 
+class AddGaussianNoise(object):
+        
+    def __call__(self, tensor):
+        return tensor + torch.randn(tensor.size()) * tensor.std() + tensor.mean()
+
+
 
 def process_image(img):
-
-    #print(img.shape)
-   # img = img[120:,90:270,:]
 
     # transform to tensor and center crop
     to_tens =  transforms.Compose([
         transforms.ToPILImage(),
-        transforms.Resize(256),
+        transforms.Resize(256,interpolation=transforms.InterpolationMode.BICUBIC),
         transforms.CenterCrop(224),
-        #transforms.Grayscale(num_output_channels=3),
         transforms.ToTensor(),
         ])
 
@@ -64,6 +66,10 @@ def augment_image(img,check=False):
         transforms.GaussianBlur(5,1)]
     )
 
+    gauss_noise = transforms.Compose([
+        AddGaussianNoise()]
+    )
+
     # rand_crop = transforms.Compose([
     #     transforms.RandomResizedCrop(size=(224,224))]
     # )
@@ -77,7 +83,7 @@ def augment_image(img,check=False):
     dark =  functional.adjust_brightness(img,0.5)
 
 
-    augments = [gauss_blur]
+    augments = [gauss_blur, gauss_noise]
     augment_names = ['original', 'rl','rr', 'blur','brihgt','dark']
 
     augmented_images = [img]

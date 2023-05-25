@@ -41,7 +41,7 @@ class CustomDataset(Dataset):
         image = row[1]
 
         policy = np.array([0]*self.num_classes)
-        policy[int(commands[-1])]=1
+        policy[int(commands[-1])] = 1
 
         if self.use_memory:
             memory = row[2]
@@ -53,41 +53,49 @@ class CustomDataset(Dataset):
         return len(self.data)
 
 
-class Clip(nn.Module):
-
-    def forward(self, input):
-        output = torch.clip(input, 0.0, 1.0)
-        return output
-
-
 class CommandNet(nn.Module):
-    def __init__(self, model_name, num_classes, predict_commands, demo_type=None, demo_folder=None, deploy=False, scaled_commands=False, finetune=False, multi_command=False, use_memory=False, use_flipped=False):
+    def __init__(self, model_name, demo_folder, multi_command, predict_commands=None,
+                 demo_type=None, deploy=False, scaled_commands=False, finetune=False,
+                 use_memory=False, use_flipped=False, data_type=None, name_extra=''):
         super().__init__()
         self.model_name = model_name
         self.demo_type = demo_type
         self.demo_folder = demo_folder
         self.deploy = deploy
-        self.finetune = finetune
-        self.multi_command = multi_command
-        self.use_memory = use_memory
         self.use_flipped = use_flipped
-        self.num_classes = num_classes
-        self.predict_commands = predict_commands
+        self.data_type = data_type
 
         # --------------------------------
         # Filepaths
         # --------------------------------
-        command_type = 'multi_comm' if self.multi_command else 'single_comm'
-        train_type = 'finetuned' if self.finetune else 'trained'
+        command_type = 'multi_comm' if self.config['multi_command'] else 'single_comm'
+        train_type = 'finetuned' if finetune else 'trained'
 
         self.root_dir = 'navigation/commandnet/runs/run_recent'
         self.model_path = f'{self.root_dir}/{command_type}/{self.demo_folder}/{self.model_name}'
+        # seperate folder if using memory
+        if use_memory:
+            self.model_path += '_memory'
+        if name_extra:
+            self.model_path += f'_{name_extra}'
+
         self.model_save_path = f'{self.model_path}/{train_type}.pth'
         self.model_load_path = f'{self.model_path}/trained.pth'
-        self.model_deploy_load_path = f'{self.model_path}/finetuned.pth' if self.finetune else f'{self.model_path}/trained.pth'
+        self.model_deploy_load_path = f'{self.model_path}/finetuned.pth' if finetune else f'{self.model_path}/trained.pth'
         if demo_type:
             self.demo_load_path = f'navigation/robot_demos/{self.demo_folder}' if demo_type == 'sim' else f'navigation/robot_demos/jenkins_experiment/{self.demo_folder}'
-        self.rescale_path = f'{self.root_dir}/{command_type}/{self.demo_folder}/{self.model_name}/rescales.pkl'
+        self.rescale_path = f'{self.model_path}/rescales.pkl'
+        self.config_path = f'{self.model_path}/config.pkl'
+
+        # load config if deployed
+        if self.deploy:
+            with open(self.rescale_path, 'rb') as f:
+                self.config = pkl.load(f)
+
+        # make config if training
+        else:
+            self.config = {'use_memory': use_memory, 'multi_command': multi_command, 'scale_commands': scaled_commands,
+                           'finetune': finetune, 'predict_commands': predict_commands}
 
         # if not os.path.exists(self.model_path):
         #     os.makedirs(self.model_path)
@@ -126,7 +134,7 @@ class CommandNet(nn.Module):
         self.input_h = 224
         self.input_w = 224
 
-        self.scale_commands = scaled_commands
+        self.config['scale_commands'] = scaled_commands
         self.data_rescales = []
         if deploy and scaled_commands:
             with open(self.rescale_path, 'rb') as f:
@@ -144,10 +152,10 @@ class CommandNet(nn.Module):
         self.loss_func = nn.MSELoss()
         self.policy_loss = nn.CrossEntropyLoss()
 
-        if self.finetune:
+        if self.config['finetune']:
             self.lr = 8e-5
             self.epochs = 9
-            self.batch_size=64
+            self.batch_size = 64
             self.weight_decay = 1e-3
         else:
             self.lr = 2e-3
@@ -159,6 +167,10 @@ class CommandNet(nn.Module):
         # DEFINE NEURAL NETS
         # --------------------------------
         self.models = {}
+
+        # define number of gaits we are using
+        self.config['num_classes'] = 3
+        print(f'Using {self.config["num_classes"]} classes.')
 
         # conv model
 
@@ -207,15 +219,17 @@ class CommandNet(nn.Module):
 
         elif self.model_name == 'dino':
             if self.deploy:
-                self.commandnet = torch.hub.load('/home/unitree/.cache/torch/hub/facebookresearch_dinov2_main', 'dinov2_vits14', source='local')
+                self.commandnet = torch.hub.load(
+                    '/home/unitree/.cache/torch/hub/facebookresearch_dinov2_main', 'dinov2_vits14', source='local')
             else:
-                self.commandnet = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
+                self.commandnet = torch.hub.load(
+                    'facebookresearch/dinov2', 'dinov2_vits14')
             self.fc_input_shape = 384
 
-            #print(self.commandnet)
+            # print(self.commandnet)
 
          # memory
-        if self.use_memory:
+        if self.config['use_memory']:
             self.batch_memory = None
             self.memory_filled = False
             self.memory_size = 9
@@ -236,12 +250,12 @@ class CommandNet(nn.Module):
         # add all models
         self.models['main'] = self.commandnet
 
-        if self.predict_commands:
+        if self.config['predict_commands']:
             self.gaits = ['x', 'yaw', 'policy']
         else:
             self.gaits = ['policy']
 
-        if self.multi_command:
+        if self.config['multi_command']:
 
             # make final layers
             self.command_layer = nn.Sequential(
@@ -312,7 +326,7 @@ class CommandNet(nn.Module):
             #     p.requires_grad = True
 
             # unfreeze some layers if finetuning. TODO: freeze BatchNorms
-            if self.finetune:
+            if self.config['finetune']:
                 print('Finetuning!')
                 self.load_trained()
                 # for p in self.models['main'].parameters():
@@ -334,7 +348,7 @@ class CommandNet(nn.Module):
 
                 conv_chil = list(chil[0].children())
 
-                #print(conv_chil[-3:])
+                # print(conv_chil[-3:])
 
                 for c in conv_chil[-6:]:
                     for p in c.parameters():
@@ -365,13 +379,13 @@ class CommandNet(nn.Module):
         print(f'PARAMETER SUMMARY \n \
                 Batch size: {self.batch_size}\n \
                 Model Name: {self.model_name}\n \
-                Scaled: {self.scale_commands}\n \
-                Multi: {self.multi_command}\n \
+                Scaled: {self.config["scale_commands"]}\n \
+                Multi: {self.config["multi_command"]}\n \
                 LR: {self.lr}         \n \
                 Epochs: {self.epochs} \n \
                 Demo type: {self.demo_type}    \n \
                 Demo folder: {self.demo_folder}\n \
-                Num Classes: {self.num_classes}\n \
+                Num Classes: {self.config["num_classes"]}\n \
                 -----------------------------------------')
 
     def forward(self, input, mem_comms=[]):
@@ -380,7 +394,7 @@ class CommandNet(nn.Module):
             # images through main layer
             output = self.models['main'](input)
 
-            if self.use_memory:
+            if self.config['use_memory']:
 
                 # compress conv embeddding
                 memory_embedding = self.models['memory'](output)
@@ -428,9 +442,9 @@ class CommandNet(nn.Module):
             # if not self.deploy: output = nn.Dropout(0.25)(output)
 
             # output through command regression layer
-            if self.multi_command:
+            if self.config['multi_command']:
                 policy = self.models['policy'](output)
-                if self.predict_commands:
+                if self.config['predict_commands']:
                     x = self.models['x'](output)
                     yaw = self.models['yaw'](output)
                     commands = [x, yaw]
@@ -438,9 +452,7 @@ class CommandNet(nn.Module):
                     return commands, policy
 
                 else:
-                    return [],policy
-
-                
+                    return [], policy
 
             else:
                 commands = self.models['commands'](output)
@@ -449,11 +461,11 @@ class CommandNet(nn.Module):
                 # commands = commands[:,:-1]
 
             # remove first element from memory and add comms
-            if self.deploy and self.use_memory:
+            if self.deploy and self.config['use_memory']:
 
                 command_concat = torch.concat((x, y, yaw), dim=1)
-                _,policy = torch.max(policy,1)
-                policy = policy.reshape(-1,1)
+                _, policy = torch.max(policy, 1)
+                policy = policy.reshape(-1, 1)
                 # add comms to flat memory embedding
                 comb_embedding = torch.concat(
                     (memory_embedding, command_concat, policy), dim=1).reshape(self.batch_size, 1, -1)
@@ -488,14 +500,14 @@ class CommandNet(nn.Module):
 
             for idx, info in tqdm(enumerate(trainloader)):
 
-                if self.use_memory:
-                    (image, command_targets,policy_targets, memory) = info
+                if self.config['use_memory']:
+                    (image, command_targets, policy_targets, memory) = info
 
-                    #print(command_targets[0],policy_targets[0],memory[0])
+                    # print(command_targets[0],policy_targets[0],memory[0])
                 else:
                     (image, command_targets, policy_targets) = info
 
-                command_targets=command_targets[:,:-1]
+                command_targets = command_targets[:, :-1] # removes policy val
                 command_targets = command_targets.to(self.device)
                 command_targets = command_targets.float()
                 policy_targets = policy_targets.to(self.device)
@@ -503,7 +515,7 @@ class CommandNet(nn.Module):
                 image = image.to(self.device)
                 image = image.float()
 
-                if self.use_memory:
+                if self.config['use_memory']:
 
                     # reset batch mem
                     self._reset_memory()
@@ -526,19 +538,17 @@ class CommandNet(nn.Module):
                 for opt in self.opts:
                     opt.zero_grad(set_to_none=True)
 
-
                 commands, policy = self.forward(image)
 
-                if self.multi_command:
+                if self.config['multi_command']:
 
                     ind_loss = [self.loss_func(
-                    commands[i], command_targets[:, i].reshape(-1, 1)) for i in range(len(commands))]
+                        commands[i], command_targets[:, i].reshape(-1, 1)) for i in range(len(commands))]
 
                     policy_loss = self.policy_loss(policy, policy_targets)
                     ind_loss.append(policy_loss)
 
                     loss = sum(ind_loss)
-
 
                 else:
                     ind_loss = [self.loss_func(
@@ -560,7 +570,7 @@ class CommandNet(nn.Module):
 
                 total_train_loss['total'].append(loss.item())
 
-                del image, command_targets,policy_targets, ind_loss, loss
+                del image, command_targets, policy_targets, ind_loss, loss
 
             for l in total_train_loss:
                 loss_log[l].append(np.mean(total_train_loss[l]))
@@ -607,13 +617,12 @@ class CommandNet(nn.Module):
 
             for iter, info in enumerate(data):
 
-                if self.use_memory:
-                    (image, command_targets,policy_targets, memory) = info
+                if self.config['use_memory']:
+                    (image, command_targets, policy_targets, memory) = info
                 else:
                     (image, command_targets, policy_targets) = info
 
-
-                command_targets=command_targets[:,:-1]
+                command_targets = command_targets[:, :-1]
                 command_targets = command_targets.to(self.device)
                 command_targets = command_targets.float()
                 policy_targets = policy_targets.to(self.device)
@@ -621,7 +630,7 @@ class CommandNet(nn.Module):
                 image = image.to(self.device)
                 image = image.float()
 
-                if self.use_memory:
+                if self.config['use_memory']:
 
                     # reset batch mem
                     self._reset_memory()
@@ -643,7 +652,7 @@ class CommandNet(nn.Module):
 
                 commands, policy = self.forward(image)
 
-                if self.multi_command:
+                if self.config['multi_command']:
                     ind_loss = [self.loss_func(
                         commands[i], command_targets[:, i].reshape(-1, 1)) for i in range(len(commands))]
 
@@ -681,7 +690,7 @@ class CommandNet(nn.Module):
             self.models[model_type].eval()
 
         # reset batch mem
-        if self.use_memory:
+        if self.config['use_memory']:
             self._reset_memory()
 
         print('Evaluating full demo')
@@ -700,10 +709,9 @@ class CommandNet(nn.Module):
                 image = image.float()
 
                 command_targets = command_targets.reshape(-1).detach().tolist()
-                
 
                 # if memory not filled yet then fill and continue
-                if self.use_memory and not self.memory_filled:
+                if self.config['use_memory'] and not self.memory_filled:
 
                     self.forward(image)
                     # self._fill_memory()
@@ -714,12 +722,12 @@ class CommandNet(nn.Module):
                 _, policy = torch.max(policy, 1)
 
                 # commands,policy = self._data_rescale(commands, policy)
-                if self.multi_command:
-                    if self.predict_commands:
+                if self.config['multi_command']:
+                    if self.config['predict_commands']:
                         for i in range(len(commands)):
                             commands[i] = commands[i].detach().item()
                     else:
-                        commands=[]
+                        commands = []
                 else:
                     commands = commands.reshape(-1).detach().tolist()
                 policy = policy.detach().item()
@@ -727,7 +735,7 @@ class CommandNet(nn.Module):
                 commands = list(commands)
                 commands.append(policy)
 
-                if self.predict_commands:
+                if self.config['predict_commands']:
                     for ind, g in enumerate(self.gaits):
                         preds[g].append(commands[ind])
                         labels[g].append(command_targets[ind])
@@ -744,8 +752,13 @@ class CommandNet(nn.Module):
         import gzip
         print('Preparing Data...')
 
+        if self.data_type == 'rgb':
+            data_key = 'Image1st'
+        elif self.data_type == 'depth':
+            data_key = 'DepthImg'
+
         num_runs = len([p for p in Path(self.demo_load_path).glob('*')])
-        print('Demo path:',self.demo_load_path)
+        print('Demo path:', self.demo_load_path)
         print('Num runs', num_runs)
 
         comms = []
@@ -771,12 +784,12 @@ class CommandNet(nn.Module):
                     for k in demo:
 
                         if k == 'Commands':
-                            if i in [18]:
+                            if i in [0]:
                                 test_comms += demo[k]
                             else:
                                 comms += demo[k]
-                        elif k == 'Image1st':
-                            if i in [18]:
+                        elif k == data_key:
+                            if i in [0]:
                                 test_images += demo[k]
                             else:
                                 images += demo[k]
@@ -794,7 +807,7 @@ class CommandNet(nn.Module):
 
             for i in tqdm(range(len(comms))):
 
-                if abs(comms[i][2])>=0.5:
+                if abs(comms[i][2]) >= 0.5:
 
                     horiz = horiz_flip_img(images[i])
 
@@ -806,7 +819,7 @@ class CommandNet(nn.Module):
 
             for i in tqdm(range(len(test_comms))):
 
-                if abs(test_comms[i][2])>=0.5:
+                if abs(test_comms[i][2]) >= 0.5:
 
                     horiz = horiz_flip_img(test_images[i])
 
@@ -826,8 +839,8 @@ class CommandNet(nn.Module):
 
             print('Flipped train & test length:', len(comms), len(test_comms))
 
-
         # remove y vals
+        print('Removing y_cmd vals')
         for i in range(len(comms)):
             comms[i].pop(1)
 
@@ -853,7 +866,7 @@ class CommandNet(nn.Module):
         # DATA SCALING
         # ------------------------
 
-        if self.scale_commands:
+        if self.config['scale_commands']:
             print('Scaling commands...')
 
             all_comms = np.concatenate((comms, test_comms), axis=0)
@@ -861,8 +874,8 @@ class CommandNet(nn.Module):
 
             mini = all_comms.min(axis=0)
             ptp = all_comms.ptp(axis=0)
-           
-            mini=mini[:-1]
+
+            mini = mini[:-1]
             ptp = ptp[:-1]
             self.data_rescales = [mini, ptp]
             print('rescales:', self.data_rescales)
@@ -878,7 +891,8 @@ class CommandNet(nn.Module):
                 print(max(comms[:, i].flatten()), min(comms[:, i].flatten()))
                 print(max(test_comms[:, i].flatten()),
                       min(test_comms[:, i].flatten()))
-                print('NaN search:', np.argwhere(np.isnan(comms[:,i])), np.argwhere(np.isnan(test_comms[:,i])))
+                print('NaN search:', np.argwhere(
+                    np.isnan(comms[:, i])), np.argwhere(np.isnan(test_comms[:, i])))
 
         print('Orignal dataset:', comms.shape, images.shape,
               test_comms.shape, test_images.shape)
@@ -889,14 +903,12 @@ class CommandNet(nn.Module):
 
         # self.plot_data(test_unbatched[0], 'test unbatched')
 
-
-        policy_counts = {0:0,1:0,2:0}
+        policy_counts = {p:0 for p in range(self.config['num_classes'])}
 
         for i in range(len(comms)):
-            policy_counts[int(comms[i][-1])]+=1
+            policy_counts[int(comms[i][-1])] += 1
 
         print('Train policy counts:', policy_counts)
-        
 
         # ------------------------
         # IMAGE PROCESSING
@@ -938,13 +950,14 @@ class CommandNet(nn.Module):
             processed_img = processed_train[i][1]
             comm = processed_train[i][0]
 
-            if comm[-1]==0:
+            if comm[-1] == 0:
                 for _ in range(1):
 
                     batch = []
 
                     if i == 0:
-                        augmented_imgs = augment_image(processed_img, check=True)
+                        augmented_imgs = augment_image(
+                            processed_img, check=True)
                     else:
                         augmented_imgs = augment_image(processed_img)
 
@@ -954,12 +967,13 @@ class CommandNet(nn.Module):
 
                     augmented_train.append(batch)
             else:
-                 for _ in range(1):
+                for _ in range(1):
 
                     batch = []
 
                     if i == 0:
-                        augmented_imgs = augment_image(processed_img, check=True)
+                        augmented_imgs = augment_image(
+                            processed_img, check=True)
                     else:
                         augmented_imgs = augment_image(processed_img)
 
@@ -1003,7 +1017,7 @@ class CommandNet(nn.Module):
         # ------------------------
         # Add memory to data
         # ------------------------
-        if self.use_memory:
+        if self.config['use_memory']:
             print('Adding memory info to train data...')
             train_memory = []
 
@@ -1110,23 +1124,26 @@ class CommandNet(nn.Module):
         print('Train samples:', len(train))
         print('Test samples:', len(test))
         print('Image shape:', train[0][1].shape)
-        if self.use_memory:
+        if self.config['use_memory']:
             print('Memory shape:', len(train[0][2]))
 
         # train data in batches of 10
-        train_data = CustomDataset(train, use_memory=self.use_memory, num_classes=self.num_classes)
+        train_data = CustomDataset(
+            train, use_memory=self.config['use_memory'], num_classes=self.config['num_classes'])
         trainloader = DataLoader(train_data, batch_size=self.batch_size,
                                  shuffle=True, drop_last=True, num_workers=2, pin_memory=True)
 
         # eval data in batches of 10
-        test_data = CustomDataset(test, use_memory=self.use_memory, num_classes=self.num_classes)
+        test_data = CustomDataset(
+            test, use_memory=self.config['use_memory'], num_classes=self.config['num_classes'])
         test_batch_size = self.batch_size if len(
             test) >= self.batch_size else len(test)
         testloader = DataLoader(test_data, batch_size=test_batch_size,
                                 num_workers=2, pin_memory=True, shuffle=True, drop_last=True)
 
         # final test data in batches of 1...memory will have to fill
-        testdemo_data = CustomDataset(test_unbatched, use_memory=False, num_classes=self.num_classes)
+        testdemo_data = CustomDataset(
+            test_unbatched, use_memory=False, num_classes=self.config['num_classes'])
         testdemoloader = DataLoader(
             testdemo_data, batch_size=1, num_workers=2, pin_memory=True)
 
@@ -1137,20 +1154,20 @@ class CommandNet(nn.Module):
     def _data_rescale(self, commands, policy):
 
         # prepare commands
-        if self.multi_command:
+        if self.config['multi_command']:
             for i in range(len(commands)):
                 commands[i] = commands[i].detach().item()
         else:
             commands = commands.reshape(-1).detach().tolist()
 
-        _, policy = torch.max(policy,1)
+        _, policy = torch.max(policy, 1)
         policy = policy.detach().item()
 
-        if self.scale_commands:
-            #commands.append(policy)
+        if self.config['scale_commands']:
+            # commands.append(policy)
 
             commands = np.array(commands)
-            commands= np.clip(commands, 0.0, 1.0)
+            commands = np.clip(commands, 0.0, 1.0)
             commands = commands*self.data_rescales[1]+self.data_rescales[0]
 
             commands = list(commands)
@@ -1478,10 +1495,14 @@ class CommandNet(nn.Module):
         torch.save(all_models, self.model_save_path)
         print('Saved to:', self.model_save_path)
 
-        if self.scale_commands:
+        if self.config['scale_commands']:
             print('saving rescale data...')
             with open(self.rescale_path, 'wb') as f:
                 pkl.dump(self.data_rescales, f)
+
+        print('Saving config parameters')
+        with open(self.config_path, 'wb') as f:
+            pkl.dump(self.config, f)
 
     def _save_model_plots(self, loss_log, test_loss):
         import matplotlib.pyplot as plt
@@ -1494,11 +1515,12 @@ class CommandNet(nn.Module):
 
         fig, ax = plt.subplots(num_rows+1, 2, sharey=True)
         fig.suptitle(
-            f'Loss per Epoch\n Final train loss: {round(loss_log["total"][-1],4)}    Final eval loss: {round(test_loss["total"][-1],4)} ')
+            f'Final train loss: {round(loss_log["total"][-1],4)}    Final eval loss: {round(test_loss["total"][-1],4)} \
+                \n  LR: {self.lr}   Batch size: {self.batch_size}')
         count = 0
         for i in range(num_rows):
             for j in range(2):
-                if i*2+j+1>len(log_keys):
+                if i*2+j+1 > len(log_keys):
                     continue
 
                 ax[i, j].plot(range(len(loss_log['total'])),
@@ -1511,7 +1533,7 @@ class CommandNet(nn.Module):
         fig.legend(handles, labels, loc='upper right')
         plt.ylim(0.0, 0.6)
         fig.tight_layout()
-        extra = 'finetuned' if self.finetune else ''
+        extra = 'finetuned' if self.config['finetune'] else ''
         plt.savefig(f'{self.model_path}/losses_{extra}.png')
         # plt.show()
 
@@ -1522,9 +1544,9 @@ class CommandNet(nn.Module):
         count = 0
         for i in range(num_rows):
             for j in range(2):
-                if i*2+j+1>len(eval_keys):
-                    continue    
-                
+                if i*2+j+1 > len(eval_keys):
+                    continue
+
                 ax[i, j].plot(range(len(eval_preds[eval_keys[count]])),
                               eval_preds[eval_keys[count]], label='Pred')
                 ax[i, j].plot(range(len(eval_labels[eval_keys[count]])),
@@ -1535,7 +1557,6 @@ class CommandNet(nn.Module):
             fig.legend(handles, labels, loc='upper right')
             fig.tight_layout()
             plt.savefig(f'{self.model_path}/preds_{extra}.png')
-
 
         print('Plots saved to:', self.model_path)
 
@@ -1552,7 +1573,7 @@ class CommandNet(nn.Module):
         # load all models
         for model_type in self.models:
             print(f'Loading model type: {model_type}')
-            if model_type=='main' and self.model_name=='dino':
+            if model_type == 'main' and self.model_name == 'dino':
                 self.models['main'].cuda()
                 self.models['main'].eval()
                 continue
@@ -1565,11 +1586,9 @@ class CommandNet(nn.Module):
                 self.models[model_type].eval()
                 print('Eval mode')
 
-
         print('Eval check:')
         for model_type in self.models:
-            print('Training?:',self.models[model_type].training)
-
+            print('Training?:', self.models[model_type].training)
 
     def _reset_memory(self):
 
@@ -1602,7 +1621,7 @@ class CommandNet(nn.Module):
             new = deepcopy(fill).reshape(self.batch_size, 1, -1)
             self.batch_memory = torch.concat((self.batch_memory, new), dim=1)
 
-        #print(self.batch_memory)
+        # print(self.batch_memory)
         self.memory_filled = True
 
     def _add_to_memory(self, embedding):
@@ -1623,7 +1642,7 @@ class CommandNet(nn.Module):
 
         zero_comm = np.array([0.0, 0.0])
 
-        if self.scale_commands:
+        if self.config['scale_commands']:
             zero_comm = (
                 zero_comm - self.data_rescales[0])/self.data_rescales[1]
 
@@ -1640,7 +1659,7 @@ class CommandNet(nn.Module):
     def plot_data(self, sample, title, pil=False):
         if pil:
             to_pil = transforms.Compose([
-                transforms.ToPILImage(),]
+                transforms.ToPILImage(), ]
             )
             sample[1] = to_pil(sample[1])
         import matplotlib.pyplot as plt
@@ -1656,10 +1675,11 @@ if __name__ == '__main__':
     demo_folder = 'stata'
     deploy = False
     scaled_commands = True
-    use_memory = False
+    use_memory = True
     use_flipped = False
     multi_command = True
     predict_commands = True
+    name_extra = ''
 
     num_classes = 3
 
@@ -1678,9 +1698,9 @@ if __name__ == '__main__':
                          use_flipped=use_flipped,
                          multi_command=multi_command,
                          num_classes=num_classes,
-                         predict_commands=predict_commands)
+                         predict_commands=predict_commands,
+                         name_extra=name_extra)
 
-        
         cnn.train_model()
 
         finetune = True

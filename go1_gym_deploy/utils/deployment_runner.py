@@ -146,6 +146,16 @@ class DeploymentRunner:
         try:
             for i in range(max_steps):
 
+                # check camera status if logging or using NN
+                if self.command_profile.use_commandnet or self.is_currently_probing:
+                    if self.command_profile.realsense_camera in {-1,0}:
+                        self.calibrate(wait=False)
+                        if self.command_profile.realsense_camera == -1:
+                            input('Alert! Realsense camera not initialized. Run realsense_node.py before continuing. Ready to continue?:')
+                        elif self.command_profile.realsense_camera == 0:
+                            input('Alert! Realsense camera has failed. Check camera connection and cord. Restart realsense_node.py before continuing.\
+                                    Ready to continue?:')
+
                 # update env yaw bool form commmand profile
                 self.agents[self.control_agent_name].yaw_bool = self.command_profile.yaw_bool
                 self.policy = self.command_profile.policy

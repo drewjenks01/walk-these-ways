@@ -125,7 +125,8 @@ class StateEstimator:
         self.camera_image_bottom = None
         self.camera_image_rear = None
 
-        self.realsense_commands = None
+        self.realsense_commands = [0.0,0.0,0]
+        self.realsense_camera = -1
 
         self.body_loc = np.array([0, 0, 0])
         self.body_quat = np.array([0, 0, 0, 1])
@@ -381,8 +382,10 @@ class StateEstimator:
         msg = realsense_lcmt.decode(data)
 
         commands = msg.commands
+        camera  = msg.camera
 
         self.realsense_commands = commands
+        self.realsense_camera = camera
 
     def poll(self, cb=None):
         t = time.time()

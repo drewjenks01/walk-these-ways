@@ -123,26 +123,22 @@ class RealSense:
         self.body_loc = np.array([0, 0, 0])
         self.body_quat = np.array([0, 0, 0, 1])
 
+        self.realsense_camera = -1
+
 
         #commandnet info
         model_name = 'dino'
         demo_folder = 'stata'
-        use_memory=False
         multi_command = True
-        scale_commands = False
-        finetune= False
-        deploy=True
-        num_classes = 3
-        predict_commands = False
-        self.model = CommandNet(model_name=model_name,
+        deploy = True
+        name_extra = ''
+
+        self.model = CommandNet(
+                        model_name=model_name,
                         demo_folder=demo_folder, 
                         deploy=deploy, 
-                        use_memory=use_memory, 
-                        multi_command=multi_command, 
-                        scaled_commands=scale_commands,
-                        finetune=finetune,
-                        num_classes=num_classes,
-                        predict_commands=predict_commands)
+                        multi_command=multi_command,
+                        name_extra=name_extra)
 
         if not self.model.use_memory:
             # fake inference data to cache model
@@ -197,9 +193,12 @@ class RealSense:
                 self.left_lower_left_switch_pressed = False
                 self.logging = False
 
-
-            camera_imgs = self.capture_realsense_img()
-            #print(len(camera_imgs))
+            try:
+                camera_imgs = self.capture_realsense_img()
+            
+            except:
+                # handles wait_for_frame error
+                self.realsense_camera = 0   # set camera to not working
             
 
             if self.use_commandnet:
@@ -223,6 +222,11 @@ class RealSense:
             else:
                 comms = self.get_processed_command()
 
+            # send camera status and/or NN commands
+            if self.use_commandnet:
+                self.rs_commanddata_cb(camera=self.realsense_camera, commands=comms)
+            else:
+                self.rs_commanddata_cb(camera=self.rs_commanddata_cb)
 
             # log commands and image
             if self.logging:
@@ -302,10 +306,13 @@ class RealSense:
             align_to = rs.stream.color
             self.rs_align = rs.align(align_to)
 
+            # set camera to working
+            self.realsense_camera = 1
+
         print('Priming camera...')
         for _ in range(5):
             self.capture_realsense_img()
-        print('Begin logging')
+        print('Checks are all good. Begin commands.')
 
 
     def terminate_realsense(self):
@@ -402,13 +409,11 @@ class RealSense:
             commands, policy = self.model._data_rescale(commands, policy)
 
         if not self.model.predict_commands:
-            commands = [0.0,0.0]
+            commands = [-1,-1]
 
         commands.append(policy)
         commands = np.array(commands)
         print(commands)
-
-        self.rs_commanddata_cb(commands)
         return commands
 
 
@@ -467,11 +472,12 @@ class RealSense:
         # print(self.right_stick, self.left_stick)
 
 
-    def rs_commanddata_cb(self, data):
+    def rs_commanddata_cb(self, camera, commands = [0.0,0.0,0]):
 
         rs = realsense_lcmt()
 
-        rs.commands = data
+        rs.commands = commands
+        rs.camera = camera
 
         self.lc.publish("realsense_command_data", rs.encode())
 

@@ -30,10 +30,11 @@ CNN that takes in images as input and control commands as output
 
 
 class CustomDataset(Dataset):
-    def __init__(self, data, use_memory, num_classes):
+    def __init__(self, data, data_type,use_memory, num_classes):
         self.data = data
         self.use_memory = use_memory
         self.num_classes = num_classes
+        self.data_type = data_type
 
     def __getitem__(self, index):
         row = self.data[index]
@@ -42,21 +43,31 @@ class CustomDataset(Dataset):
 
         policy = np.array([0]*self.num_classes)
         policy[int(commands[-1])] = 1
+        
+        if self.data_type =='both':
+            image_two = row[2]
+            if self.use_memory:
+                memory = row[3]
+                return image, image_two, commands, policy, memory
+            
+            else:
+                return image, image_two, commands, policy
 
-        if self.use_memory:
-            memory = row[2]
-            return image, commands, policy, memory
         else:
-            return image, commands, policy
+
+            if self.use_memory:
+                return image, commands, policy, memory
+            else:
+                return image, commands, policy
 
     def __len__(self):
         return len(self.data)
 
 
 class CommandNet(nn.Module):
-    def __init__(self, model_name, demo_folder, multi_command, predict_commands=None,
+    def __init__(self, model_name, demo_folder, multi_command, data_type, predict_commands=None,
                  demo_type=None, deploy=False, scaled_commands=False, finetune=False,
-                 use_memory=False, use_flipped=False, data_type=None, name_extra=''):
+                 use_memory=False, use_flipped=False, name_extra=''):
         super().__init__()
         self.model_name = model_name
         self.demo_type = demo_type
@@ -68,7 +79,7 @@ class CommandNet(nn.Module):
         # --------------------------------
         # Filepaths
         # --------------------------------
-        command_type = 'multi_comm' if self.config['multi_command'] else 'single_comm'
+        command_type = 'multi_comm' if multi_command else 'single_comm'
         train_type = 'finetuned' if finetune else 'trained'
 
         self.root_dir = 'navigation/commandnet/runs/run_recent'
@@ -97,19 +108,16 @@ class CommandNet(nn.Module):
             self.config = {'use_memory': use_memory, 'multi_command': multi_command, 'scale_commands': scaled_commands,
                            'finetune': finetune, 'predict_commands': predict_commands}
 
-        # if not os.path.exists(self.model_path):
-        #     os.makedirs(self.model_path)
+        if not os.path.exists(self.model_path):
+            os.makedirs(self.model_path)
 
 
         # update files
-        if os.path.exists(self.model_path+'_prev'):     # delete earliest run if exists
+        if os.path.exists(self.model_path+f'/{self.model_name}_prev'):     # delete earliest run if exists
             print('Removing previous run')
-            shutil.rmtree(self.model_path+'_prev')
+            shutil.rmtree(self.model_path+f'/{self.model_name}_prev')
         
-        if not os.listdir(self.model_path):     # make model path if doesnt exist
-            print('Creating model dir')
-            os.makedirs(self.model_path)
-        else:                                       # make it the previos run if it does exist
+        if os.listdir(self.model_path):    # make it the previous run if it does exist
             print('Shuffling model dirs')
             os.rename(self.model_path, self.model_path+'_prev')
             os.makedirs(self.model_path)
@@ -226,6 +234,9 @@ class CommandNet(nn.Module):
                     'facebookresearch/dinov2', 'dinov2_vits14')
             self.fc_input_shape = 384
 
+        if self.data_type =='both':
+            self.fc_input_shape*=2
+
             # print(self.commandnet)
 
          # memory
@@ -256,41 +267,45 @@ class CommandNet(nn.Module):
             self.gaits = ['policy']
 
         if self.config['multi_command']:
+            
+            self.shared_out = 50
 
             # make final layers
-            self.command_layer = nn.Sequential(
-                nn.Linear(self.fc_input_shape, 32),
+            self.shared_layer = nn.Sequential(
+                nn.Linear(self.fc_input_shape, 200),
                 nn.GELU(),
-                nn.Dropout(),
-                nn.Linear(32, 16),
+                nn.Linear(200, 100),
+                #nn.Dropout(),
                 nn.GELU(),
-                nn.Dropout(),
-                nn.Linear(16,8),
-                nn.GELU(),
-                nn.Dropout(),
-                nn.Linear(8,1),
+                nn.Linear(100, self.shared_out),
+                nn.GELU()
             )
 
             if predict_commands:
-                x = deepcopy(self.command_layer)
-                yaw = deepcopy(self.command_layer)
+                x = nn.Sequential(
+                    self.shared_layer,
+                    nn.Linear(self.shared_out,25),
+                    nn.GELU(),
+                    nn.Linear(25,1)
+                )
+                yaw = nn.Sequential(
+                    self.shared_layer,
+                    nn.Linear(self.shared_out,25),
+                    nn.GELU(),
+                    nn.Linear(25,1)
+
+                )
 
                 self.models['x'] = x
                 self.models['yaw'] = yaw
 
             policy = nn.Sequential(
-                nn.Linear(self.fc_input_shape, 32),
-                nn.GELU(),
-                nn.Dropout(),
-                nn.Linear(32, 16),
-                nn.GELU(),
-                nn.Dropout(),
-                nn.Linear(16,8),
-                nn.GELU(),
-                nn.Dropout(),
-                nn.Linear(8,self.num_classes),
-                #nn.Dropout(),
-            )
+                    self.shared_layer,
+                    nn.Dropout(),
+                    nn.Linear(self.shared_out,25),
+                    nn.GELU(),
+                    nn.Linear(25,self.config['num_classes'])
+                )
             self.models['policy'] = policy
 
         else:
@@ -360,7 +375,7 @@ class CommandNet(nn.Module):
             for model_type in self.models:
                 print(model_type)
                 self.opts.append(optim.Adam(
-                    params=self.models[model_type].parameters(), lr=self.lr))
+                    params=self.models[model_type].parameters(), lr=self.lr, weight_decay=self.weight_decay))
 
             self.prepare_data()
 
@@ -386,13 +401,18 @@ class CommandNet(nn.Module):
                 Demo type: {self.demo_type}    \n \
                 Demo folder: {self.demo_folder}\n \
                 Num Classes: {self.config["num_classes"]}\n \
+                Data type: {self.data_type}\n \
                 -----------------------------------------')
 
-    def forward(self, input, mem_comms=[]):
+    def forward(self, input, input_two, mem_comms=[]):
         with torch.set_grad_enabled(not self.deploy):
 
             # images through main layer
             output = self.models['main'](input)
+
+            if input_two != None:
+                output_two = self.models['main'](input_two)
+                output = torch.concat((output,output_two), dim=1)
 
             if self.config['use_memory']:
 
@@ -500,20 +520,40 @@ class CommandNet(nn.Module):
 
             for idx, info in tqdm(enumerate(trainloader)):
 
-                if self.config['use_memory']:
-                    (image, command_targets, policy_targets, memory) = info
-
-                    # print(command_targets[0],policy_targets[0],memory[0])
-                else:
-                    (image, command_targets, policy_targets) = info
-
-                command_targets = command_targets[:, :-1] # removes policy val
-                command_targets = command_targets.to(self.device)
-                command_targets = command_targets.float()
-                policy_targets = policy_targets.to(self.device)
-                policy_targets = policy_targets.float()
+                image = info[0]
                 image = image.to(self.device)
-                image = image.float()
+                image  = image.float()
+
+                image_two = None
+
+                if self.data_type =='both':
+                    image_two = info[1]
+                    image_two = image_two.to(self.device)
+                    image_two  = image_two.float()
+
+                    command_targets = info[2]
+                    command_targets = command_targets.to(self.device)
+                    command_targets  = command_targets.float()
+
+                    policy_targets = info[3]
+                    policy_targets = policy_targets.to(self.device)
+                    policy_targets  = policy_targets.float()
+
+                    if self.config['use_memory']:
+                        memory = info[4]
+                        
+
+                else:
+                    command_targets = info[1]
+                    command_targets = command_targets.to(self.device)
+                    command_targets  = command_targets.float()
+
+                    policy_targets = info[2]
+                    policy_targets = policy_targets.to(self.device)
+                    policy_targets  = policy_targets.float()
+
+                    if self.config['use_memory']:
+                        memory = info[3]
 
                 if self.config['use_memory']:
 
@@ -538,7 +578,7 @@ class CommandNet(nn.Module):
                 for opt in self.opts:
                     opt.zero_grad(set_to_none=True)
 
-                commands, policy = self.forward(image)
+                commands, policy = self.forward(image, image_two)
 
                 if self.config['multi_command']:
 
@@ -617,18 +657,40 @@ class CommandNet(nn.Module):
 
             for iter, info in enumerate(data):
 
-                if self.config['use_memory']:
-                    (image, command_targets, policy_targets, memory) = info
-                else:
-                    (image, command_targets, policy_targets) = info
-
-                command_targets = command_targets[:, :-1]
-                command_targets = command_targets.to(self.device)
-                command_targets = command_targets.float()
-                policy_targets = policy_targets.to(self.device)
-                policy_targets = policy_targets.float()
+                image = info[0]
                 image = image.to(self.device)
-                image = image.float()
+                image  = image.float()
+
+                image_two = None
+
+                if self.data_type =='both':
+                    image_two = info[1]
+                    image_two = image_two.to(self.device)
+                    image_two  = image_two.float()
+
+                    command_targets = info[2]
+                    command_targets = command_targets.to(self.device)
+                    command_targets  = command_targets.float()
+
+                    policy_targets = info[3]
+                    policy_targets = policy_targets.to(self.device)
+                    policy_targets  = policy_targets.float()
+
+                    if self.config['use_memory']:
+                        memory = info[4]
+                        
+
+                else:
+                    command_targets = info[1]
+                    command_targets = command_targets.to(self.device)
+                    command_targets  = command_targets.float()
+
+                    policy_targets = info[2]
+                    policy_targets = policy_targets.to(self.device)
+                    policy_targets  = policy_targets.float()
+
+                    if self.config['use_memory']:
+                        memory = info[3]
 
                 if self.config['use_memory']:
 
@@ -650,7 +712,7 @@ class CommandNet(nn.Module):
 
                     assert self.memory_filled == True, 'Memory not filled'
 
-                commands, policy = self.forward(image)
+                commands, policy = self.forward(image, image_two)
 
                 if self.config['multi_command']:
                     ind_loss = [self.loss_func(
@@ -699,14 +761,37 @@ class CommandNet(nn.Module):
             preds = {g: [] for g in self.gaits}
             labels = {g: [] for g in self.gaits}
 
-            for iter, (image, command_targets, policy_targets) in tqdm(enumerate(data)):
+            for iter,info in tqdm(enumerate(data)):
 
-                command_targets = command_targets.to(self.device)
-                command_targets = command_targets.float()
-                policy_targets = policy_targets.to(self.device)
-                policy_targets = policy_targets.float()
+                image = info[0]
                 image = image.to(self.device)
-                image = image.float()
+                image  = image.float()
+
+                image_two = None
+
+                if self.data_type =='both':
+                    image_two = info[1]
+                    image_two = image_two.to(self.device)
+                    image_two  = image_two.float()
+
+                    command_targets = info[2]
+                    command_targets = command_targets.to(self.device)
+                    command_targets  = command_targets.float()
+
+                    policy_targets = info[3]
+                    policy_targets = policy_targets.to(self.device)
+                    policy_targets  = policy_targets.float()
+
+                        
+
+                else:
+                    command_targets = info[1]
+                    command_targets = command_targets.to(self.device)
+                    command_targets  = command_targets.float()
+
+                    policy_targets = info[2]
+                    policy_targets = policy_targets.to(self.device)
+                    policy_targets  = policy_targets.float()
 
                 command_targets = command_targets.reshape(-1).detach().tolist()
 
@@ -717,7 +802,7 @@ class CommandNet(nn.Module):
                     # self._fill_memory()
                     continue
                 else:
-                    commands, policy = self.forward(image)
+                    commands, policy = self.forward(image, image_two)
 
                 _, policy = torch.max(policy, 1)
 
@@ -752,19 +837,24 @@ class CommandNet(nn.Module):
         import gzip
         print('Preparing Data...')
 
-        if self.data_type == 'rgb':
-            data_key = 'Image1st'
-        elif self.data_type == 'depth':
-            data_key = 'DepthImg'
+        data = {'Commands':[], 'Commands_test':[]}
+
+        if self.data_type in {'rgb', 'both'}:
+            data['Image1st']=[]
+            data['Image1st_test']=[]
+            data['Image1st_aug']=[]
+            data['Image1st_processed']=[]
+        
+        if self.data_type in {'depth', 'both'}:
+            data['DepthImg']=[]
+            data['DepthImg_test']=[]
+            data['DepthImg_processed']=[]
+
 
         num_runs = len([p for p in Path(self.demo_load_path).glob('*')])
         print('Demo path:', self.demo_load_path)
         print('Num runs', num_runs)
 
-        comms = []
-        test_comms = []
-        images = []
-        test_images = []
         print('Extracted demos...')
 
         # ------------------------
@@ -782,85 +872,61 @@ class CommandNet(nn.Module):
                     p = pickle.Unpickler(f)
                     demo = p.load()
                     for k in demo:
-
-                        if k == 'Commands':
-                            if i in [0]:
-                                test_comms += demo[k]
+                        
+                        if k in data:
+                            if i ==0:
+                                data[k+'_test'] +=demo[k]
                             else:
-                                comms += demo[k]
-                        elif k == data_key:
-                            if i in [0]:
-                                test_images += demo[k]
-                            else:
-                                images += demo[k]
+                                data[k] += demo[k]
 
-        print('Original train & test length:', len(comms), len(test_comms))
+
+        print('Original train & test length:', len(data['Commands']), len(data['Commands_test']))
         # ------------------------
         # Horiz Flipping
         # ------------------------
         if self.use_flipped:
-            flipped_imgs = []
-            flipped_test_imgs = []
-            flipped_comms = []
-            flipped_test_comms = []
             print('Flipping images...')
 
-            for i in tqdm(range(len(comms))):
+            for i in tqdm(range(len(data['Commands']))):
 
-                if abs(comms[i][2]) >= 0.5:
-
-                    horiz = horiz_flip_img(images[i])
-
-                    flipped_imgs.append(horiz)
-                    c = comms[i]
+                if abs(data['Commands'][i][2]) >= 0.5:
+                    c = data['Commands'][i]
                     flip_y = -1*c[1]
                     flip_yaw = -1*c[2]
-                    flipped_comms.append([c[0], flip_y, flip_yaw, c[3]])
+                    data['Commands'].append([c[0], flip_y, flip_yaw, c[3]])
+                    
+                    if self.data_type in {'rgb', 'both'}:
+                        horiz_rgb = horiz_flip_img(data['Image1st'][i])
+                        data['Image1st'].append(horiz_rgb)
+                    elif self.data_type in {'rgb', 'both'}:
+                        horiz_depth = horiz_flip_img(data['DepthImg'][i])
+                        data['DepthImg'].append(horiz_depth)
 
-            for i in tqdm(range(len(test_comms))):
-
-                if abs(test_comms[i][2]) >= 0.5:
-
-                    horiz = horiz_flip_img(test_images[i])
-
-                    flipped_test_imgs.append(horiz)
-                    c_t = test_comms[i]
-                    flip_y = -1*c_t[1]
-                    flip_yaw = -1*c_t[2]
-                    flipped_test_comms.append(
-                        [c_t[0], flip_y, flip_yaw, c_t[3]])
-
-            # self.plot_data([flipped_comms[0], flipped_imgs[0]],'flip')
-
-            comms += flipped_comms
-            test_comms += flipped_test_comms
-            images += flipped_imgs
-            test_images += flipped_test_imgs
-
-            print('Flipped train & test length:', len(comms), len(test_comms))
+            print('Flipped train & test length:', len(data['Commands']))
 
         # remove y vals
         print('Removing y_cmd vals')
-        for i in range(len(comms)):
-            comms[i].pop(1)
+        for i in range(len(data['Commands'])):
+            data['Commands'][i].pop(1)
 
-        for i in range(len(test_comms)):
-            test_comms[i].pop(1)
+        for i in range(len(data['Commands_test'])):
+            data['Commands_test'][i].pop(1)
+        
+        data['Commands'] = np.array(data['Commands'])
+        data['Commands_test'] = np.array(data['Commands_test'])
+        if self.data_type in {'rgb','both'}:
+            data['Image1st'] = np.array(data['Image1st'])
+        if self.data_type in {'depth','both'}:
+            data['DepthImg'] = np.array(data['DepthImg'])
 
-        comms = np.array(comms)
-        test_comms = np.array(test_comms)
+        print('Removed y_cmd shapes:',data['Commands'].shape, data['Commands_test'].shape)
 
-        # remove gait params
-        print(comms.shape, test_comms.shape)
-        # comms = np.delete(comms, [3,4], axis=1)
-        # test_comms = np.delete(test_comms,[3,4], axis=1)
+        original_comms = deepcopy(data['Commands'])
+        original_test_comms = deepcopy(data['Commands_test'])
 
-        original_comms = deepcopy(comms)
+        
 
-        images = np.array(images)
-        test_images = np.array(test_images)
 
-        original_test_comms = deepcopy(test_comms)
 
         # ------------------------
         # DATA SCALING
@@ -869,7 +935,9 @@ class CommandNet(nn.Module):
         if self.config['scale_commands']:
             print('Scaling commands...')
 
-            all_comms = np.concatenate((comms, test_comms), axis=0)
+            
+
+            all_comms = np.concatenate((data['Commands'], data['Commands_test']), axis=0)
             print('all combs:', all_comms.shape)
 
             mini = all_comms.min(axis=0)
@@ -881,136 +949,110 @@ class CommandNet(nn.Module):
             print('rescales:', self.data_rescales)
 
             for i in range(len(self.data_rescales[0])):
-                comms[:, i] = (comms[:, i]-mini[i])/ptp[i]
-                test_comms[:, i] = (test_comms[:, i]-mini[i])/ptp[i]
+                print('before',max(data['Commands'][:, i].flatten()), min(data['Commands'][:, i].flatten()))
+                print('before',max(data['Commands_test'][:, i].flatten()), min(data['Commands_test'][:, i].flatten()))
+
+                data['Commands'][:, i] = (data['Commands'][:, i]-mini[i])/ptp[i]
+                data['Commands_test'][:, i] = (data['Commands_test'][:, i]-mini[i])/ptp[i] 
 
                 if self.data_rescales[1][i] == 0.0:
-                    comms[:, i] = original_comms[:, i]
-                    test_comms[:, i] = original_test_comms[:, i]
+                    data['Commands'][:, i] = original_comms[:, i]
+                    data['Commands_test'][:, i] = original_test_comms[:, i]
 
-                print(max(comms[:, i].flatten()), min(comms[:, i].flatten()))
-                print(max(test_comms[:, i].flatten()),
-                      min(test_comms[:, i].flatten()))
+                print('after',max(data['Commands'][:, i].flatten()), min(data['Commands'][:, i].flatten()))
+                print('after',max(data['Commands_test'][:, i].flatten()), min(data['Commands_test'][:, i].flatten()))
                 print('NaN search:', np.argwhere(
-                    np.isnan(comms[:, i])), np.argwhere(np.isnan(test_comms[:, i])))
+                    np.isnan(data['Commands'][:, i])), np.argwhere(np.isnan(data['Commands_test'][:, i])))
 
-        print('Orignal dataset:', comms.shape, images.shape,
-              test_comms.shape, test_images.shape)
-
-        # test_unbatched = []
-        # for i in range(len(test_comms)):
-        #     test_unbatched.append([test_comms[i], test_images[i]])
-
-        # self.plot_data(test_unbatched[0], 'test unbatched')
+        print('Original dataset')
+        for k in data:
+            if type(data[k])!=list:
+                print(k, data[k].shape)
 
         policy_counts = {p:0 for p in range(self.config['num_classes'])}
 
-        for i in range(len(comms)):
-            policy_counts[int(comms[i][-1])] += 1
+        for i in range(len(data['Commands'])):
+            policy_counts[int(data['Commands'][i][-1])] += 1
 
         print('Train policy counts:', policy_counts)
 
         # ------------------------
         # IMAGE PROCESSING
         # ------------------------
-        processed_train = []
         print('Processing train images...')
-        for i in tqdm(range(len(images))):
-            processed_img = process_image(images[i])
+        
+        if self.data_type in {'rgb', 'both'}:
+            for i in tqdm(range(len(data['Image1st']))):
+                processed_img = process_image(data['Image1st'][i])
+                data['Image1st_processed'].append(processed_img)
 
-            processed_train.append([comms[i], processed_img])
+            del data['Image1st']
 
-        processed_test = []
-        print('Processing test images...')
-        for i in tqdm(range(len(test_images))):
-            processed_img = process_image(test_images[i])
+        if self.data_type in {'depth','both'}:
+            for i in tqdm(range(len(data['DepthImg']))):
+                processed_img = process_image(data['DepthImg'][i])
+                data['DepthImg_processed'].append(processed_img)
 
-            processed_test.append([test_comms[i], processed_img])
-
-        # for i in tqdm(range(len(test_unbatched))):
-        #     processed_img = normalize_image(process_image(test_unbatched[i][1]))
-
-        #     test_unbatched[i][1] = processed_img
-
-        test_unbatched = deepcopy(processed_test)
-
-        del comms, test_comms, images, test_images, original_comms, original_test_comms
-
-        print('Process length:', len(processed_train), len(processed_test[0]))
-        print('test unbatched: ', len(test_unbatched))
+            del data['DepthImg']
 
         # self.plot_data(deepcopy(processed_train[0]), 'processed train', pil=True)
+
+        print('Creating test data...')
+        test_unbatched =[]
+        for i in tqdm(range(len(data['Commands_test']))):
+            batch = []
+            batch.append(data['Commands_test'][i])
+
+            if self.data_type in {'rgb','both'}:
+                proc_img = process_image(data['Image1st_test'][i])
+                norm_img = normalize_image(proc_img)
+                batch.append(norm_img)
+
+            if self.data_type in {'depth', 'both'}:
+                proc_img = process_image(data['DepthImg_test'][i])
+                norm_img = normalize_image(proc_img)
+                batch.append(norm_img)
+
+            test_unbatched.append(batch)
+
+        
+        del data['Commands_test']
+        if 'Image1st_test' in data:
+            del data['Image1st_test']
+        if 'DepthImg_test' in data:
+            del data['DepthImg_test']
+
+
 
         # ------------------------
         # IMAGE AUGMENTATION & Normalization
         # ------------------------
         print('Augmenting and Normalizing train images...')
-        augmented_train = []
-        for i in tqdm(range(len(processed_train))):
-            processed_img = processed_train[i][1]
-            comm = processed_train[i][0]
+        for i in tqdm(range(len(data['Commands']))):
+            batch =[]
 
-            if comm[-1] == 0:
-                for _ in range(1):
+            comm = data['Commands'][i]
+            
+            
+            if self.data_type in {'depth', 'both'}:
+                norm_img = normalize_image(data['DepthImg_processed'][i])
+                data['DepthImg_processed'][i] = norm_img
 
-                    batch = []
+            if self.data_type in {'rgb','both'}:
+                augmented_imgs = augment_image(data['Image1st_processed'][i])
 
-                    if i == 0:
-                        augmented_imgs = augment_image(
-                            processed_img, check=True)
-                    else:
-                        augmented_imgs = augment_image(processed_img)
+                for im in augmented_imgs:
+                    norm_img = normalize_image(im)
+                    batch.append([comm, norm_img])
 
-                    for im in augmented_imgs:
-                        norm_img = normalize_image(im)
-                        batch.append([comm, norm_img])
+                data['Image1st_aug'].append(batch)
 
-                    augmented_train.append(batch)
-            else:
-                for _ in range(1):
-
-                    batch = []
-
-                    if i == 0:
-                        augmented_imgs = augment_image(
-                            processed_img, check=True)
-                    else:
-                        augmented_imgs = augment_image(processed_img)
-
-                    for im in augmented_imgs:
-                        norm_img = normalize_image(im)
-                        batch.append([comm, norm_img])
-
-                    augmented_train.append(batch)
-
-        # del processed_train
-
-        print('Augmenting test images...')
-        augmented_test = []
-        for i in tqdm(range(len(processed_test))):
-            processed_img = processed_test[i][1]
-            comm = processed_test[i][0]
-
-            batch = []
-
-            if i == 0:
-                augmented_imgs = augment_image(processed_img, check=True)
-            else:
-                augmented_imgs = augment_image(processed_img)
-            for im in augmented_imgs:
-                norm_img = normalize_image(im)
-                batch.append([comm, norm_img])
-
-            augmented_test.append(batch)
-
-        for i in range(len(test_unbatched)):
-            norm = normalize_image(test_unbatched[i][1])
-            test_unbatched[i][1] = norm
-
-        del processed_test
+        
+        if 'Image1st_processed' in data:
+            del data['Image1st_processed']
 
         print(
-            f'Augmented lengths: {len(augmented_train)}, {len(augmented_train[0])}')
+            f'Augmented lengths: {len(data["Image1st_aug"])}')
 
         # self.plot_data(deepcopy(augmented_train[0][0]), 'aug train', pil=True)
 
@@ -1019,7 +1061,7 @@ class CommandNet(nn.Module):
         # ------------------------
         if self.config['use_memory']:
             print('Adding memory info to train data...')
-            train_memory = []
+            data['Image1st_mem']=[]
 
             for i in tqdm(range(len(augmented_train[0]))):
 
@@ -1076,39 +1118,27 @@ class CommandNet(nn.Module):
         else:
             print('Adding info to train data...')
             train_memory = []
-            for i in tqdm(range(len(augmented_train))):
+            for i in tqdm(range(len(data['Commands']))):
 
-                for j in range(len(augmented_train[0])):
+                for j in range(len(data['Image1st_aug'][0])):
+                    data_point = []
 
-                    data_point = [augmented_train[i][j]
-                                  [0], augmented_train[i][j][1]]
+
+                    if self.data_type in {'rgb', 'both'}:
+                        data_point .append(data['Image1st_aug'][i][j][0])
+                        data_point.append(data['Image1st_aug'][i][j][1])
+
+                    if self.data_type in {'depth','both'}:
+                        if not data_point:
+                            data_point = [data['Commands'][i]]
+                        data_point.append(data['DepthImg_processed'][i])
+
+                    if i==0 and j==0:
+                        print('Data point:', data_point)
+
                     train_memory.append(data_point)
 
-           # del augmented_train
-
-            print('Adding info to test data...')
-            test_memory = []
-            for i in tqdm(range(len(augmented_test))):
-
-                for j in range(len(augmented_test[0])):
-
-                    data_point = [augmented_test[i][j]
-                                  [0], augmented_test[i][j][1]]
-                    test_memory.append(data_point)
-
-        # ------------------------
-        # Repeat yaw examples for class imbalance
-        # ------------------------
-        # print('Adjusting yaw class imbalance')
-        # additional_data=[]
-        # for i in range(len(train_memory)):
-        #     if abs(train_memory[i][0][2])>0.25:
-        #         cop = deepcopy(train_memory[i])
-        #         additional_data.append(cop)
-        # train_memory+=additional_data
-
         train = train_memory
-        test = test_memory
 
         # if self.visualize_data:
         #     self._visualize_robot_dataset_(processed_train,train_memory)
@@ -1116,39 +1146,28 @@ class CommandNet(nn.Module):
         torch.cuda.empty_cache()
 
         print(
-            f'Final shapes: train = {len(train)}, test={len(test)}, test unbatched = {len(test_unbatched)}')
+            f'Final shapes: train = {len(train)} test unbatched = {len(test_unbatched)}')
 
         np.random.shuffle(train)
-        np.random.shuffle(test)
 
-        print('Train samples:', len(train))
-        print('Test samples:', len(test))
         print('Image shape:', train[0][1].shape)
         if self.config['use_memory']:
             print('Memory shape:', len(train[0][2]))
 
         # train data in batches of 10
         train_data = CustomDataset(
-            train, use_memory=self.config['use_memory'], num_classes=self.config['num_classes'])
+            train, use_memory=self.config['use_memory'], num_classes=self.config['num_classes'], data_type=self.data_type)
         trainloader = DataLoader(train_data, batch_size=self.batch_size,
                                  shuffle=True, drop_last=True, num_workers=2, pin_memory=True)
 
-        # eval data in batches of 10
-        test_data = CustomDataset(
-            test, use_memory=self.config['use_memory'], num_classes=self.config['num_classes'])
-        test_batch_size = self.batch_size if len(
-            test) >= self.batch_size else len(test)
-        testloader = DataLoader(test_data, batch_size=test_batch_size,
-                                num_workers=2, pin_memory=True, shuffle=True, drop_last=True)
-
         # final test data in batches of 1...memory will have to fill
         testdemo_data = CustomDataset(
-            test_unbatched, use_memory=False, num_classes=self.config['num_classes'])
+            test_unbatched, use_memory=False, num_classes=self.config['num_classes'], data_type=self.data_type)
         testdemoloader = DataLoader(
             testdemo_data, batch_size=1, num_workers=2, pin_memory=True)
 
         self.trainloader = trainloader
-        self.testloader = testloader
+        self.testloader = testdemoloader
         self.testdemoloader = testdemoloader
 
     def _data_rescale(self, commands, policy):
@@ -1167,8 +1186,8 @@ class CommandNet(nn.Module):
             # commands.append(policy)
 
             commands = np.array(commands)
-            commands = np.clip(commands, 0.0, 1.0)
-            commands = commands*self.data_rescales[1]+self.data_rescales[0]
+            commands = np.clip(commands, -1.0, 1.0)
+            commands = (commands)*self.data_rescales[1]+self.data_rescales[0]
 
             commands = list(commands)
 
@@ -1513,7 +1532,7 @@ class CommandNet(nn.Module):
 
         num_rows = int(np.ceil(len(log_keys)/2))
 
-        fig, ax = plt.subplots(num_rows+1, 2, sharey=True)
+        fig, ax = plt.subplots(num_rows+1, 2, sharey=False)
         fig.suptitle(
             f'Final train loss: {round(loss_log["total"][-1],4)}    Final eval loss: {round(test_loss["total"][-1],4)} \
                 \n  LR: {self.lr}   Batch size: {self.batch_size}')
@@ -1675,13 +1694,12 @@ if __name__ == '__main__':
     demo_folder = 'stata'
     deploy = False
     scaled_commands = True
-    use_memory = True
+    use_memory = False
     use_flipped = False
     multi_command = True
     predict_commands = True
     name_extra = ''
-
-    num_classes = 3
+    data_type = 'rgb'
 
     model = ['dino']
     for m in model:
@@ -1697,27 +1715,27 @@ if __name__ == '__main__':
                          use_memory=use_memory,
                          use_flipped=use_flipped,
                          multi_command=multi_command,
-                         num_classes=num_classes,
                          predict_commands=predict_commands,
-                         name_extra=name_extra)
+                         name_extra=name_extra,
+                         data_type=data_type)
 
         cnn.train_model()
 
         finetune = True
 
-        cnn = CommandNet(demo_type=demo_type,
-                         model_name=m,
-                         demo_folder=demo_folder,
-                         deploy=deploy,
-                         scaled_commands=scaled_commands,
-                         finetune=finetune,
-                         use_memory=use_memory,
-                         use_flipped=use_flipped,
-                         multi_command=multi_command,
-                         num_classes=num_classes,
-                         predict_commands=predict_commands)
+        # cnn = CommandNet(demo_type=demo_type,
+        #                  model_name=m,
+        #                  demo_folder=demo_folder,
+        #                  deploy=deploy,
+        #                  scaled_commands=scaled_commands,
+        #                  finetune=finetune,
+        #                  use_memory=use_memory,
+        #                  use_flipped=use_flipped,
+        #                  multi_command=multi_command,
+        #                  predict_commands=predict_commands,
+        #                  data_type=data_type)
 
-        cnn.train_model()
+        # cnn.train_model()
 
 
 # %%

@@ -132,13 +132,15 @@ class RealSense:
         multi_command = True
         deploy = True
         name_extra = ''
+        data_type = 'rgb'
 
         self.model = CommandNet(
                         model_name=model_name,
                         demo_folder=demo_folder, 
                         deploy=deploy, 
                         multi_command=multi_command,
-                        name_extra=name_extra)
+                        name_extra=name_extra,
+                        data_type=data_type)
 
         if not self.model.use_memory:
             # fake inference data to cache model
@@ -202,14 +204,13 @@ class RealSense:
             
 
             if self.use_commandnet:
-                rs_img_rgb = camera_imgs['Image1st']
 
                 # check if model memory is filled yet
                 if self.model.use_memory and not self.model.memory_filled:
                     # if not, add to memory and get processed command
 
                     # add to memory
-                    comms = self.nn_commands(rs_img_rgb)
+                    comms = self.nn_commands(camera_imgs)
 
                     # processed command
                     comms = self.get_processed_command()
@@ -217,7 +218,7 @@ class RealSense:
                 else:
 
                     # if memory is filled, get predicted commands from NN
-                    comms = self.nn_commands(rs_img_rgb)
+                    comms = self.nn_commands(camera_imgs)
 
             else:
                 comms = self.get_processed_command()
@@ -395,17 +396,25 @@ class RealSense:
 
         return comms
 
-    def nn_commands(self,img):
+    def nn_commands(self,images):
         if self.mode!=7:
             print('Stopping NN...')
             self.use_commandnet = False
 
-        img= process_deployed(img)
+        imgs =[]
+        if self.model.data_type in {'rgb', 'both'}:
+            imgs.append(images['Image1st'])
+        if self.model.data_type in {'depth', 'both'}:
+            imgs.append(images['DepthImg'])
+
+
+        for i in range(len(imgs)):
+            imgs[i] = process_deployed(imgs[i])
 
         if self.model.use_memory:
-            self.model.forward(img)
+            self.model.forward(*imgs)
         else:
-            commands, policy = self.model.forward(img)
+            commands, policy = self.model.forward(*imgs)
             commands, policy = self.model._data_rescale(commands, policy)
 
         if not self.model.predict_commands:

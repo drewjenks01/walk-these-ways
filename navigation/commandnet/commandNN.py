@@ -100,7 +100,7 @@ class CommandNet(nn.Module):
 
         # load config if deployed
         if self.deploy:
-            with open(self.rescale_path, 'rb') as f:
+            with open(self.config_path, 'rb') as f:
                 self.config = pkl.load(f)
 
         # make config if training

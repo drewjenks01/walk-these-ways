@@ -108,20 +108,20 @@ class CommandNet(nn.Module):
             self.config = {'use_memory': use_memory, 'multi_command': multi_command, 'scale_commands': scaled_commands,
                            'finetune': finetune, 'predict_commands': predict_commands}
 
-        if not os.path.exists(self.model_path):
-            os.makedirs(self.model_path)
+            if not os.path.exists(self.model_path):
+                os.makedirs(self.model_path)
 
 
-        # update files
-        if os.path.exists(self.model_path+f'/{self.model_name}_prev'):     # delete earliest run if exists
-            print('Removing previous run')
-            shutil.rmtree(self.model_path+f'/{self.model_name}_prev')
-        
-        if os.listdir(self.model_path):    # make it the previous run if it does exist
-            print('Shuffling model dirs')
-            os.rename(self.model_path, self.model_path+'_prev')
-            os.makedirs(self.model_path)
-            shutil.move(self.model_path+'_prev',self.model_path)
+            # update files
+            if os.path.exists(self.model_path+f'/{self.model_name}_prev'):     # delete earliest run if exists
+                print('Removing previous run')
+                shutil.rmtree(self.model_path+f'/{self.model_name}_prev')
+            
+            if os.listdir(self.model_path):    # make it the previous run if it does exist
+                print('Shuffling model dirs')
+                os.rename(self.model_path, self.model_path+'_prev')
+                os.makedirs(self.model_path)
+                shutil.move(self.model_path+'_prev',self.model_path)
 
 
 

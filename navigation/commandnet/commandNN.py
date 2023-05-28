@@ -142,9 +142,8 @@ class CommandNet(nn.Module):
         self.input_h = 224
         self.input_w = 224
 
-        self.config['scale_commands'] = scaled_commands
         self.data_rescales = []
-        if deploy and scaled_commands:
+        if deploy and self.config['scale_commands']:
             with open(self.rescale_path, 'rb') as f:
                 self.data_rescales = pkl.load(f)
 

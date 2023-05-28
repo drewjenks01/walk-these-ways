@@ -277,7 +277,7 @@ class CommandNet(nn.Module):
                 nn.GELU()
             )
 
-            if predict_commands:
+            if self.config['predict_commands']:
                 x = nn.Sequential(
                     self.shared_layer,
                     nn.Linear(self.shared_out,10),

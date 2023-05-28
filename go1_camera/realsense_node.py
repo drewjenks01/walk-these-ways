@@ -127,6 +127,7 @@ class RealSense:
 
         # boolean for whether or not to load vision policy
         self.use_nn = True
+        self.nn_timing = 0
         
         if self.use_nn:
             
@@ -207,7 +208,10 @@ class RealSense:
                 self.realsense_camera = 0   # set camera to not working
             
 
-            if self.use_commandnet:
+            if self.use_commandnet and (time.time()-self.nn_timing>=1/demo.fps or self.nn_timing==0):
+
+                if self.nn_timing==0:
+                    self.nn_timing = time.time()
 
                 # check if model memory is filled yet
                 if self.model.config['use_memory'] and not self.model.memory_filled:
@@ -223,6 +227,9 @@ class RealSense:
 
                     # if memory is filled, get predicted commands from NN
                     comms = self.nn_commands(camera_imgs)
+
+                # reset NN timing
+                self.nn_timing = time.time()
 
             else:
                 comms = self.get_processed_command()

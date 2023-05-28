@@ -1506,6 +1506,16 @@ class CommandNet(nn.Module):
 
     def _save_all_models_(self):
         import pickle as pkl
+        from datetime import datetime
+        
+        now = datetime.now()
+        # dd/mm/YY H:M:S
+        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+        print("date and time =", dt_string)
+
+        with open(f'{self.model_path}/date_time.txt', 'w') as f:
+            f.write(dt_string)
+
         all_models = {}
         for model_type in self.models:
             print(f'Saving model type: {model_type}')

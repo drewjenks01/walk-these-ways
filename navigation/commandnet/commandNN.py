@@ -404,7 +404,7 @@ class CommandNet(nn.Module):
                 Data type: {self.data_type}\n \
                 -----------------------------------------')
 
-    def forward(self, input, input_two, mem_comms=[]):
+    def forward(self, input, input_two=None, mem_comms=[]):
         with torch.set_grad_enabled(not self.deploy):
 
             # images through main layer

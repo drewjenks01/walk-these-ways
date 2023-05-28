@@ -142,7 +142,7 @@ class RealSense:
                         name_extra=name_extra,
                         data_type=data_type)
 
-        if not self.model.use_memory:
+        if not self.model.config['use_memory']:
             # fake inference data to cache model
             fake_data=torch.zeros(size=(1,3,224,224)).cuda()
             self.model(fake_data)
@@ -206,7 +206,7 @@ class RealSense:
             if self.use_commandnet:
 
                 # check if model memory is filled yet
-                if self.model.use_memory and not self.model.memory_filled:
+                if self.model.config['use_memory'] and not self.model.memory_filled:
                     # if not, add to memory and get processed command
 
                     # add to memory
@@ -411,13 +411,16 @@ class RealSense:
         for i in range(len(imgs)):
             imgs[i] = process_deployed(imgs[i])
 
-        if self.model.use_memory:
+        if self.model.data_type in {'rgb', 'depth'}:
+            assert len(imgs)==1, f'Number of images going to NN is {len(imgs)} but should only be 1.'
+
+        if self.model.config['use_memory']:
             self.model.forward(*imgs)
         else:
             commands, policy = self.model.forward(*imgs)
             commands, policy = self.model._data_rescale(commands, policy)
 
-        if not self.model.predict_commands:
+        if not self.model.config['predict_commands']:
             commands = [-1,-1]
 
         commands.append(policy)

@@ -268,31 +268,28 @@ class CommandNet(nn.Module):
 
         if self.config['multi_command']:
             
-            self.shared_out = 50
+            self.shared_out = 25
 
             # make final layers
             self.shared_layer = nn.Sequential(
-                nn.Linear(self.fc_input_shape, 200),
+                nn.Linear(self.fc_input_shape, 150),
                 nn.GELU(),
-                nn.Linear(200, 100),
-                #nn.Dropout(),
-                nn.GELU(),
-                nn.Linear(100, self.shared_out),
+                nn.Linear(150, self.shared_out),
                 nn.GELU()
             )
 
             if predict_commands:
                 x = nn.Sequential(
                     self.shared_layer,
-                    nn.Linear(self.shared_out,25),
+                    nn.Linear(self.shared_out,10),
                     nn.GELU(),
-                    nn.Linear(25,1)
+                    nn.Linear(10,1)
                 )
                 yaw = nn.Sequential(
                     self.shared_layer,
-                    nn.Linear(self.shared_out,25),
+                    nn.Linear(self.shared_out,10),
                     nn.GELU(),
-                    nn.Linear(25,1)
+                    nn.Linear(10,1)
 
                 )
 

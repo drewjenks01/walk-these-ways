@@ -1183,7 +1183,7 @@ class CommandNet(nn.Module):
             # commands.append(policy)
 
             commands = np.array(commands)
-            commands = np.clip(commands, -1.0, 1.0)
+            commands = np.clip(commands, 0.0, 1.0)
             commands = (commands)*self.data_rescales[1]+self.data_rescales[0]
 
             commands = list(commands)

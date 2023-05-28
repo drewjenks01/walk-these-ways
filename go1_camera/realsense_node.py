@@ -125,29 +125,33 @@ class RealSense:
 
         self.realsense_camera = -1
 
+        # boolean for whether or not to load vision policy
+        self.use_nn = True
+        
+        if self.use_nn:
+            
+            #commandnet info
+            model_name = 'dino'
+            demo_folder = 'stata'
+            multi_command = True
+            deploy = True
+            name_extra = ''
+            data_type = 'rgb'
 
-        #commandnet info
-        model_name = 'dino'
-        demo_folder = 'stata'
-        multi_command = True
-        deploy = True
-        name_extra = ''
-        data_type = 'rgb'
+            self.model = CommandNet(
+                            model_name=model_name,
+                            demo_folder=demo_folder, 
+                            deploy=deploy, 
+                            multi_command=multi_command,
+                            name_extra=name_extra,
+                            data_type=data_type)
 
-        self.model = CommandNet(
-                        model_name=model_name,
-                        demo_folder=demo_folder, 
-                        deploy=deploy, 
-                        multi_command=multi_command,
-                        name_extra=name_extra,
-                        data_type=data_type)
-
-        if not self.model.config['use_memory']:
-            # fake inference data to cache model
-            fake_data=torch.zeros(size=(1,3,224,224)).cuda()
-            self.model(fake_data)
-            self.rs_commanddata_cb([0.0,0.0,0.0,0])
-            print('NN is ready!')
+            if not self.model.config['use_memory']:
+                # fake inference data to cache model
+                fake_data=torch.zeros(size=(1,3,224,224)).cuda()
+                self.model(fake_data)
+                self.rs_commanddata_cb([0.0,0.0,0.0,0])
+                print('NN is ready!')
 
 
         os.system(f'sudo chown -R $USER {self.log_root}')
@@ -227,7 +231,7 @@ class RealSense:
             if self.use_commandnet:
                 self.rs_commanddata_cb(camera=self.realsense_camera, commands=comms)
             else:
-                self.rs_commanddata_cb(camera=self.rs_commanddata_cb)
+                self.rs_commanddata_cb(camera=self.realsense_camera)
 
             # log commands and image
             if self.logging:
@@ -484,7 +488,7 @@ class RealSense:
         # print(self.right_stick, self.left_stick)
 
 
-    def rs_commanddata_cb(self, camera, commands = [0.0,0.0,0]):
+    def rs_commanddata_cb(self, camera, commands = [-1.0,-1.0,0]):
 
         rs = realsense_lcmt()
 
@@ -549,5 +553,5 @@ class RealSense:
 if __name__ == '__main__':
 
     camera_type = 'realsense'
-    image_type = 'both'
+    image_type = 'rgb'
     rs = RealSense(camera_type=camera_type, image_type=image_type)

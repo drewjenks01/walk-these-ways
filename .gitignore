@@ -74,5 +74,6 @@ tmp
 *.xacro
 *.pkl
 *.pth
+!navigation/commandnet/**
 *.png
 *.obj

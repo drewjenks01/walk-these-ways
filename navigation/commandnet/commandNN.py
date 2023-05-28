@@ -98,6 +98,8 @@ class CommandNet(nn.Module):
         self.rescale_path = f'{self.model_path}/rescales.pkl'
         self.config_path = f'{self.model_path}/config.pkl'
 
+        print("CONFIG PATH: ", self.config_path)
+
         # load config if deployed
         if self.deploy:
             with open(self.config_path, 'rb') as f:
@@ -123,7 +125,8 @@ class CommandNet(nn.Module):
                 os.makedirs(self.model_path)
                 shutil.move(self.model_path+'_prev',self.model_path)
 
-
+        predict_commands = self.config['predict_commands']
+        scaled_commands = self.config['scale_commands']
 
         # --------------------------------
         # DATA PARAMS
@@ -142,7 +145,7 @@ class CommandNet(nn.Module):
         self.input_h = 224
         self.input_w = 224
 
-        self.config['scale_commands'] = scaled_commands
+        # self.config['scale_commands'] = scaled_commands
         self.data_rescales = []
         if deploy and scaled_commands:
             with open(self.rescale_path, 'rb') as f:

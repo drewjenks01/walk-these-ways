@@ -132,7 +132,7 @@ class RealSense:
             
             #commandnet info
             model_name = 'dino'
-            demo_folder = 'stata'
+            demo_folder = 'icra_live'
             multi_command = True
             deploy = True
             name_extra = ''
@@ -229,6 +229,10 @@ class RealSense:
 
             # send camera status and/or NN commands
             if self.use_commandnet:
+
+                # change policy to always be climb
+                comms[-1] = 1
+
                 self.rs_commanddata_cb(camera=self.realsense_camera, commands=comms)
             else:
                 self.rs_commanddata_cb(camera=self.realsense_camera)

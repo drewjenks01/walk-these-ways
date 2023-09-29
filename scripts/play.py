@@ -20,9 +20,9 @@ from go1_gym.envs.wrappers.no_yaw_wrapper import NoYawWrapper
 
 import pandas
 
-from navigation.commandnet.commandNN import CommandNet
-from navigation.utils.image_processing import process_deployed
-from navigation.utils.sim_utils import create_xbox_controller, update_sim_view, render_first_third_imgs
+from navigation.vision.commandNN import CommandNet
+from navigation.vision.utils.image_processing import process_deployed
+from navigation.sim.sim_utils import create_xbox_controller, update_sim_view, render_first_third_imgs
 from navigation.utils.demo import Demo
 from navigation.utils.video_recorder import VideoRecorder
 import gc

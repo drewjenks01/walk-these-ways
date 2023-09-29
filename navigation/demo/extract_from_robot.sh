@@ -1,0 +1,1 @@
+rsync -a -P --info=progress2 --ignore-existing  unitree@192.168.123.15:go1_gym/logs/jenkins_experiment/ navigation/saved_demos/jenkins_experiment/

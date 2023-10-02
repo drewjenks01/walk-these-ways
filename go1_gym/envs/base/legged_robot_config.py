@@ -61,6 +61,26 @@ class Cfg(PrefixProto, cli=False):
         priv_observe_desired_contact_states = False
         priv_observe_dummy_variable = False
 
+    class camera:
+        use_camera = False
+
+        position = [0.27, 0, 0.03]  # front camera
+        angle = [-5, 5]  # positive pitch down
+
+        update_interval = 5  # 5 works without retraining, 8 worse
+
+        original = (106, 60)
+        resized = (87, 58)
+        horizontal_fov = 87
+        buffer_len = 2
+        
+        near_clip = 0
+        far_clip = 2
+        dis_noise = 0.0
+        
+        scale = 1
+        invert = True
+
     class terrain(PrefixProto, cli=False):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
         maze_terrain= False

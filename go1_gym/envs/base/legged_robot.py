@@ -8,6 +8,7 @@ from isaacgym.torch_utils import *
 
 assert gymtorch
 import torch
+import numpy as np
 
 from go1_gym import MINI_GYM_ROOT_DIR
 from go1_gym.envs.base.base_task import BaseTask
@@ -1482,6 +1483,30 @@ class LeggedRobot(BaseTask):
                                    self.terrain.triangles.flatten(order='C'), tm_params)
         self.height_samples = torch.tensor(self.terrain.heightsamples).view(self.terrain.tot_rows,
                                                                             self.terrain.tot_cols).to(self.device)
+        
+    def attach_camera(self, i, env_handle, actor_handle):
+        if self.cfg.camera.use_camera:
+            config = self.cfg.depth
+            camera_props = gymapi.CameraProperties()
+            camera_props.width = config.original[0]
+            camera_props.height = config.original[1]
+            camera_props.enable_tensors = True
+            camera_horizontal_fov = config.horizontal_fov 
+            camera_props.horizontal_fov = camera_horizontal_fov
+
+            camera_handle = self.gym.create_camera_sensor(env_handle, camera_props)
+            self.cam_handles.append(camera_handle)
+            
+            local_transform = gymapi.Transform()
+            
+            camera_position = np.copy(config.position)
+            camera_angle = np.random.uniform(config.angle[0], config.angle[1])
+            
+            local_transform.p = gymapi.Vec3(*camera_position)
+            local_transform.r = gymapi.Quat.from_euler_zyx(0, np.radians(camera_angle), 0)
+            root_handle = self.gym.get_actor_root_rigid_body_handle(env_handle, actor_handle)
+            
+            self.gym.attach_camera_to_body(camera_handle, env_handle, root_handle, local_transform, gymapi.FOLLOW_TRANSFORM)
 
     def _create_envs(self):
         """ Creates environments:
@@ -1577,6 +1602,7 @@ class LeggedRobot(BaseTask):
             self.gym.set_asset_rigid_shape_properties(self.robot_asset, rigid_shape_props)
             anymal_handle = self.gym.create_actor(env_handle, self.robot_asset, start_pose, "anymal", i,
                                                   self.cfg.asset.self_collisions, 0)
+            self.attach_camera(i, env_handle, anymal_handle)
             dof_props = self._process_dof_props(dof_props_asset, i)
             self.gym.set_actor_dof_properties(env_handle, anymal_handle, dof_props)
             body_props = self.gym.get_actor_rigid_body_properties(env_handle, anymal_handle)
@@ -1593,6 +1619,7 @@ class LeggedRobot(BaseTask):
                     icra_handle = self.gym.create_actor(env_handle, self.icra_asset,  icra_start_pose, "icra",i,
                                                     self.cfg.asset.self_collisions, 0)
                     self.actor_handles.append(icra_handle)
+
 
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):

@@ -2,7 +2,7 @@ import pathlib
 import torch
 
 # DEMO
-DEMO_BASE_SAVE_DIR = "navigation/demos_models/saved_demos"
+DEMO_BASE_SAVE_DIR = "navigation/data/raw_demos"
 DEMO_BASE_PATH = pathlib.Path(DEMO_BASE_SAVE_DIR)
 DEMO_RUN_LABEL = "run"
 DEMO_PARTIAL_RUN_LABEL = "log"

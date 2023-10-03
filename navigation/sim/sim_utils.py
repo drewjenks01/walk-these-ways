@@ -83,10 +83,8 @@ def update_sim_view(env, offset=[-1, -1, 1]):
     Updates the camera view in sim to follow heading of robot.
     """
     bx, by, bz = env.root_states[0, 0], env.root_states[0, 1], env.root_states[0, 2]
-    # print('robot loc:', bx,by,bz)
     forward = torch_utils.quat_apply(env.base_quat, env.forward_vec)
     heading = torch.atan2(forward[:, 1], forward[:, 0]).unsqueeze(1)
-    # print('Robot loc: ',[bx.item(),by.item(),bz.item()], 'Heading:',heading.item(),'forward:',list(forward))
     env.set_camera(
         [
             bx.item() - np.cos(heading.item()),
@@ -95,6 +93,16 @@ def update_sim_view(env, offset=[-1, -1, 1]):
         ],
         [bx.item() + np.cos(heading.item()), by.item() + np.sin(heading.item()), bz],
     )
+
+def update_viewer_cam(env):
+    robot_cam_pose = env.gym.get_camera_transform(env.sim, env.envs[0], env.cam_handles[0])
+    camera_pos = [robot_cam_pose.p.x, robot_cam_pose.p.y, robot_cam_pose.p.z]
+    forward = torch_utils.quat_apply(env.base_quat, env.forward_vec)
+    heading = torch.atan2(forward[:, 1], forward[:, 0]).unsqueeze(1)
+    look_at = [camera_pos[0] - np.cos(heading.item()), camera_pos[1] - np.sin(heading.item()), camera_pos[2]]
+    # Todo: can inlude cam angle -- yaw+angle
+    print(camera_pos, look_at)
+    env.set_camera(camera_pos, look_at)
 
 
 def create_xbox_controller():

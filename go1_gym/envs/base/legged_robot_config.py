@@ -64,7 +64,7 @@ class Cfg(PrefixProto, cli=False):
     class camera:
         use_camera = False
 
-        position = [0.27, 0, 0.03]  # front camera
+        position =  [0.3,0,0.03]  # front camera
         angle = [-5, 5]  # positive pitch down
 
         update_interval = 5  # 5 works without retraining, 8 worse

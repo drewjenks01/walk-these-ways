@@ -1,6 +1,7 @@
+from inputs import get_gamepad
+import math
 
 class XboxController(object):
-    import math
     MAX_TRIG_VAL = math.pow(2, 8)
     MAX_JOY_VAL = math.pow(2, 15)
 
@@ -23,8 +24,8 @@ class XboxController(object):
         self.Back = 0
         self.Start = 0
         self.YDPad=0
-        self.UPad = 0
-        self.DPad = 0
+        self.UDPad = 0
+        self.DDPad = 0
         self.XDPad = 0
         self.LDPad = 0
         self.RDPad = 0
@@ -49,20 +50,18 @@ class XboxController(object):
 
         # triggers
         controls['l_trig']=self.LeftTrigger
-        controls['y_vr_trigel']=self.RightTrigger
+        controls['r_trig']=self.RightTrigger
 
         # D pad
         controls['r_dpad']=self.RDPad
         controls['l_dpad']=self.LDPad
         controls['up_dpad']=self.UDPad
-        controls['down_dpad']=self.DDPad
-        
+        controls['down_dpad']=self.DDPad        
 
         return controls
 
 
     def _monitor_controller(self):
-        from inputs import get_gamepad
         while True:
             events = get_gamepad()
             for event in events:
@@ -102,6 +101,8 @@ class XboxController(object):
                     elif self.XDPad>0:
                         self.LDPad = 0
                         self.RDPad = 1
+                    self.DDPad = 0
+                    self.UDPad = 0
                 
                 # D Pad up/down: up = climb gait, down = duck gait
                 elif event.code == 'ABS_HAT0Y':
@@ -112,6 +113,9 @@ class XboxController(object):
                     elif self.YDPad>0:
                         self.DDPad = 0
                         self.UDPad = 1
+
+                    self.RDPad = 0
+                    self.LDPad = 0
 
 
                 ##########################

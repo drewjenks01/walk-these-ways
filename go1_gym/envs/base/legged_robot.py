@@ -1486,7 +1486,7 @@ class LeggedRobot(BaseTask):
         
     def attach_camera(self, i, env_handle, actor_handle):
         if self.cfg.camera.use_camera:
-            config = self.cfg.depth
+            config = self.cfg.camera
             camera_props = gymapi.CameraProperties()
             camera_props.width = config.original[0]
             camera_props.height = config.original[1]
@@ -1581,6 +1581,7 @@ class LeggedRobot(BaseTask):
         self.actor_handles = []
         self.imu_sensor_handles = []
         self.envs = []
+        self.cam_handles = []
 
         self.default_friction = rigid_shape_props_asset[1].friction
         self.default_restitution = rigid_shape_props_asset[1].restitution

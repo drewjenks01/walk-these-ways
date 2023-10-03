@@ -13,10 +13,10 @@ class DemoCollector:
         self.demo_name = demo_name
 
         # determine demo folder, create if doesnt exists
-        self.save_path = constants.BASE_PATH / demo_folder / self.demo_name
+        self.save_path = constants.DEMO_BASE_PATH / demo_folder / self.demo_name
         if not self.save_path.exists():
             run_count = 1
-            self.save_path.mkdir()
+            self.save_path.mkdir(parents=True)
         else:
             run_count = len(os.listdir(self.save_path)) + 1
 
@@ -34,9 +34,6 @@ class DemoCollector:
 
         # initialize data to store during demo
         self.demo_data = utils.get_empty_demo_data()
-
-        self.NN_ready = False
-        self.using_NN = False
 
         self.fps = 3
         self.how_often_capture_data = 1/self.fps
@@ -75,7 +72,7 @@ class DemoCollector:
         return self.demo_data
 
     def hard_reset(self):
-        self._reset_partial_demo(ard_reset=True)
+        self._reset_demo(hard_reset=True)
 
     def _reset_demo(
         self,
@@ -90,7 +87,7 @@ class DemoCollector:
         if partial_save:
             # store the current demo data as a partial run
             logging.info(f"Storing partial demo: {self.save_path}")
-            with self.save_path.open(mode="w") as file:
+            with self.save_path.open(mode="wb") as file:
                 pkl.dump(self.demo_data, file)
 
             self.demo_data = utils.get_empty_demo_data()

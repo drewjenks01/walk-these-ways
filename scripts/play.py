@@ -25,6 +25,7 @@ from navigation.vision.utils.image_processing import process_deployed
 from navigation.sim.sim_utils import (
     create_xbox_controller,
     update_sim_view,
+    update_viewer_cam,
     render_forward_depth_rgb,
 )
 import gc
@@ -34,11 +35,11 @@ torch.cuda.empty_cache()
 
 
 def load_policy(logdir):
-    body = torch.jit.load(logdir + "/checkpoints/body_latest.jit")
+    body = torch.jit.load(logdir / "checkpoints/body_latest.jit")
     import os
 
     adaptation_module = torch.jit.load(
-        logdir + "/checkpoints/adaptation_module_latest.jit"
+        logdir / "checkpoints/adaptation_module_latest.jit"
     )
 
     def policy(obs, info={}):
@@ -104,10 +105,10 @@ def load_env(headless=False):
     Cfg.terrain.teleport_robots = False
     Cfg.terrain.mesh_type = "trimesh"
 
-    Cfg.terrain.generated = False
+    Cfg.terrain.generated = True
     Cfg.terrain.generated_name = "0014"
     Cfg.terrain.generated_diff = "icra"
-    Cfg.terrain.icra = True
+    Cfg.terrain.icra = False
     Cfg.terrain.maze_terrain = Cfg.terrain.generated
 
     Cfg.domain_rand.lag_timesteps = 6
@@ -134,6 +135,9 @@ def play_go1(make_demo:bool, demo_folder: str, demo_name: str, headless: bool):
     joy = create_xbox_controller()
 
     curr_policy = constants.WALK_GAIT_NAME
+    curr_policy_params = constants.WALK_GAIT_PARAMS
+
+    using_nn = False
 
     while True:
         with torch.no_grad():
@@ -141,8 +145,11 @@ def play_go1(make_demo:bool, demo_folder: str, demo_name: str, headless: bool):
                 actions = walk_policy(obs)
             elif curr_policy == constants.CLIMB_GAIT_NAME:
                 actions = climb_policy(obs)
+            elif curr_policy == constants.DUCK_GAIT_NAME:
+                actions = walk_policy(obs)
 
         update_sim_view(env)
+        #update_viewer_cam(env)
 
         controls = joy.read()
 
@@ -156,6 +163,7 @@ def play_go1(make_demo:bool, demo_folder: str, demo_name: str, headless: bool):
             curr_policy = constants.DUCK_GAIT_NAME
             curr_policy_params = constants.DUCK_GAIT_PARAMS
 
+
         # climb policy is not trained to go backward
         if controls['y_vel'] < 0 and curr_policy == constants.CLIMB_GAIT_NAME:
             curr_policy = constants.WALK_GAIT_NAME
@@ -165,7 +173,8 @@ def play_go1(make_demo:bool, demo_folder: str, demo_name: str, headless: bool):
         if controls['x_but'] != 0:
             logging.info("Resetting demo")
             env.reset()
-            demo_collector.hard_reset()
+            if make_demo:
+                demo_collector.hard_reset()
 
         # read and update demo collect bool
         if controls['y_but'] != 0:
@@ -191,7 +200,7 @@ def play_go1(make_demo:bool, demo_folder: str, demo_name: str, headless: bool):
                 logging.info('NN not ready to be used')
             
 
-        if demo_collector.using_NN:
+        if using_nn:
             pass
             # TODO: implement NN
 
@@ -237,9 +246,9 @@ def play_go1(make_demo:bool, demo_folder: str, demo_name: str, headless: bool):
         # TODO: scale x_vel if using wtw
 
 
-        env.commands[:, 0] = 0.0
-        env.commands[:, 1] = controls['y_vel']
-        env.commands[:, 2] = controls['yaw']
+        env.commands[:, 0] = controls['y_vel']*1.5
+        env.commands[:, 1] = 0.0
+        env.commands[:, 2] = controls['yaw']*1.5
         env.commands[:, 3] = curr_policy_params['body_height_cmd']
         env.commands[:, 4] = curr_policy_params['step_frequency_cmd']
         env.commands[:, 5:8] = curr_policy_params['gait']
@@ -248,10 +257,11 @@ def play_go1(make_demo:bool, demo_folder: str, demo_name: str, headless: bool):
         env.commands[:, 10] = curr_policy_params['pitch_cmd']
         env.commands[:, 11] = curr_policy_params['roll_cmd']
         env.commands[:, 12] = curr_policy_params['stance_width_cmd']
+        env.yaw_bool = curr_policy_params['yaw_obs_bool']
         obs, rew, done, info = env.step(actions)
 
         # collect commands every timestep -> will be averages
-        if demo_collector.currently_collecting and time.time() - demo_collector.timer >= demo_collector.how_often_capture_data:
+        if make_demo and demo_collector.currently_collecting and time.time() - demo_collector.timer >= demo_collector.how_often_capture_data:
             rgb_img, depth_img = render_forward_depth_rgb(env)
             frame_data = {
                 "y_vel": controls['y_vel'],
@@ -262,9 +272,6 @@ def play_go1(make_demo:bool, demo_folder: str, demo_name: str, headless: bool):
 
             }
             demo_collector.add_data_to_partial_run(frame_data)
-
-        i += 1
-
 
 def parse_args():
     logging.basicConfig(level=logging.INFO)

@@ -1640,6 +1640,10 @@ class LeggedRobot(BaseTask):
             self.termination_contact_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0],
                                                                                         self.actor_handles[0],
                                                                                         termination_contact_names[i])
+        # if perception is on, set up camera
+        if self.cfg.perception.compute_segmentation or self.cfg.perception.compute_rgb or self.cfg.perception.compute_depth:
+            self.initialize_cameras(range(self.num_envs))
+
         # if recording video, set up camera
         if self.cfg.env.record_video:
             self.camera_props = gymapi.CameraProperties()
@@ -1859,3 +1863,34 @@ class LeggedRobot(BaseTask):
         heights = torch.min(heights, heights3)
 
         return heights.view(len(env_ids), -1) * self.terrain.cfg.vertical_scale
+
+    def initialize_cameras(self, env_ids):
+        self.cams = {label: [] for label in self.cfg.perception.camera_names}
+        self.camera_sensors = {}
+
+        from go1_gym.sensors.attached_camera_sensor import AttachedCameraSensor
+
+        for camera_label, camera_pose, camera_rpy, camera_gimbal in zip(self.cfg.perception.camera_names,
+                                                             self.cfg.perception.camera_poses,
+                                                             self.cfg.perception.camera_rpys,
+                                                             self.cfg.perception.camera_gimbals):
+            self.camera_sensors[camera_label] = AttachedCameraSensor(self)
+            self.camera_sensors[camera_label].initialize(camera_label, camera_pose, camera_rpy, camera_gimbal, env_ids=env_ids)
+        
+    def get_segmentation_images(self, env_ids):
+        segmentation_images = []
+        for camera_name in self.cfg.perception.camera_names:
+            segmentation_images = self.camera_sensors[camera_name].get_segmentation_images(env_ids)
+        return segmentation_images
+
+    def get_rgb_images(self, env_ids):
+        rgb_images = {}
+        for camera_name in self.cfg.perception.camera_names:
+            rgb_images[camera_name] = self.camera_sensors[camera_name].get_rgb_images(env_ids)
+        return rgb_images
+
+    def get_depth_images(self, env_ids):
+        depth_images = {}
+        for camera_name in self.cfg.perception.camera_names:
+            depth_images[camera_name] = self.camera_sensors[camera_name].get_depth_images(env_ids)
+        return depth_images

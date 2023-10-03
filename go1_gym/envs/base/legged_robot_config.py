@@ -445,3 +445,30 @@ class Cfg(PrefixProto, cli=False):
             max_gpu_contact_pairs = 2 ** 23  # 2**24 -> needed for 8000 envs and more
             default_buffer_size_multiplier = 5
             contact_collection = 2  # 0: never, 1: last sub-step, 2: all sub-steps (default=2)
+
+    class perception(PrefixProto, cli=False):
+        measure_heights = False
+        compute_heights = False
+        measure_frictions = False
+        compute_frictions = False
+        measure_roughnesses = False
+        compute_roughnesses = False
+
+        measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+        measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
+        num_height_points = 187
+
+        camera_names = ["front", "left", "right", "bottom", "rear"]
+        camera_poses = [[0.3, 0, 0], [0, 0.15, 0], [0, -0.15, 0], [0.1, 0, -0.1], [-0.2, 0, -0.1]]
+        camera_rpys = [[0.0, 0, 0], [0, 0, 3.14 / 2], [0, 0, -3.14 / 2], [0, -3.14 / 2, 0],
+                       [0, -3.14 / 2, 0]]
+        camera_gimbals = [False, False, False, False, False]
+        compute_depth = False
+        compute_rgb = False
+        compute_segmentation = False
+        # observe_depth = False
+        # observe_rgb = False
+        # observe_segmentation = False
+        image_height = 100
+        image_width = 100
+        image_horizontal_fov = 110.0 # 110 degrees

@@ -117,6 +117,14 @@ def load_env(headless=False):
     Cfg.domain_rand.randomize_lag_timesteps = True
     Cfg.control.control_type = "actuator_net"
 
+    Cfg.perception.image_horizontal_fov = 110
+    Cfg.perception.image_height = 160
+    Cfg.perception.image_width = 220
+    Cfg.perception.camera_names = ["forward", "downward"]
+    Cfg.perception.camera_poses = [[0.3, 0, 0], [0.3, 0, -0.08]]
+    Cfg.perception.camera_rpys = [[0.0, 0, 0], [0, -3.14 / 2, 0]]
+    Cfg.perception.compute_depth = True
+
     env_vel = VelocityTrackingEasyEnv(sim_device="cuda:0", headless=False, cfg=Cfg)
     env = NoYawWrapper(env_vel, yaw_bool=False)
 

@@ -6,19 +6,6 @@ import matplotlib.pyplot as plt
 from navigation import constants
 
 
-def render_forward_depth_rgb(env):
-    env.gym.step_graphics(env.sim)
-    env.gym.render_all_camera_sensors(env.sim)
-    depth_image_ = env.gym.get_camera_image_gpu_tensor(
-        env.sim, env.envs[0], env.cam_handles[0], gymapi.IMAGE_DEPTH
-    )
-    depth_image = gymtorch.wrap_tensor(depth_image_)
-    rgb_image = env.gym.get_camera_image_gpu_tensor(
-        env.sim, env.envs[0], env.cam_handles[0], gymapi.IMAGE_COLOR
-    )
-    return rgb_image, depth_image
-
-
 def render_first_third_imgs(env, view_imgs=False):
     """
     Renders and returns a first person and third person viewpoint image of robot.

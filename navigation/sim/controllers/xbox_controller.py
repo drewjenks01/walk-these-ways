@@ -31,6 +31,9 @@ class XboxController(object):
         self.RDPad = 0
         self.thumbs=0
 
+        self.x_currently_pressed = 0
+        self.y_currently_pressed = 0
+
         import threading
         self._monitor_thread = threading.Thread(target=self._monitor_controller, args=())
         self._monitor_thread.daemon = True
@@ -47,6 +50,9 @@ class XboxController(object):
         # buttons
         controls['y_but'] = self.Y
         controls['x_but'] = self.X
+        # reset buttons
+        self.Y = 0
+        self.X = 0
 
         # triggers
         controls['l_trig']=self.LeftTrigger
@@ -65,6 +71,12 @@ class XboxController(object):
         while True:
             events = get_gamepad()
             for event in events:
+
+                # reset buttons if not pressed anymore
+                if self.x_currently_pressed and event.code != 'BTN_NORTH':
+                    self.x_currently_pressed = 0
+                if self.y_currently_pressed and event.code != 'BTN_WEST':
+                    self.y_currently_pressed = 0
                 
                 # IN USE
 
@@ -84,13 +96,19 @@ class XboxController(object):
                 elif event.code == 'ABS_RZ':
                     self.RightTrigger = event.state / XboxController.MAX_TRIG_VAL # normalize between 0 and 1
 
+               
                 # X button: hard resets the current demo and environment
-                elif event.code == 'BTN_NORTH':
-                    self.X = event.state #previously switched with X
+                elif event.code == 'BTN_NORTH' and not self.x_currently_pressed:
+                    # if pressed and not previously pressed,then log the event
+                    self.X = event.state
+                    self.x_currently_pressed = 1
                 
                 # Y button: starts recording a demo
-                elif event.code == 'BTN_WEST':
-                    self.Y = event.state #previously switched with Y
+                elif event.code == 'BTN_WEST' and not self.y_currently_pressed:
+                    # if pressed and not previously pressed,then log the event
+                    # if pressed and already been pressed, then dont log
+                    self.Y = event.state
+                    self.y_currently_pressed = 1
 
                 # D Pad left/right: right = walk gait, left = nothing
                 elif event.code == 'ABS_HAT0X':

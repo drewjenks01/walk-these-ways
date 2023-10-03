@@ -19,10 +19,11 @@ import torch.nn as nn
 
 
 class DemoPostProcessor:
-    def __init__(self, demo_folder: str, demo_name: str, run_number: int):
+    def __init__(self, demo_folder: str, demo_name: str, run_number: int, demo_compressed: bool):
         self.demo_folder = demo_folder
         self.demo_name = demo_name
         self.run_number = run_number
+        self.demo_compressed = demo_compressed
         logging.info(f"Demo name: {self.demo_name}, run_num: {self.run_number}")
 
         self.demo_folder = (
@@ -94,9 +95,9 @@ class DemoPostProcessor:
             
         video_filepath = str(self.demo_post_folder / "run_video.mp4")
 
-        rgb_images = self.demo_data[constants.DEMO_RGB_KEY]
-        depth_images = self.demo_data[constants.DEMO_DEPTH_KEY]
-        commands = self.demo_data[constants.DEMO_COMMAND_KEY]
+        rgb_images = self.demo_data[constants.FORWARD_RGB_CAMERA]
+        depth_images = self.demo_data[constants.FORWARD_DEPTH_CAMERA]
+        commands = self.demo_data[constants.COMMAND_KEY]
 
         depth_exists = len(depth_images) > 0
 
@@ -109,7 +110,7 @@ class DemoPostProcessor:
 
         # Function to update the frames in the animation
         pbar = tqdm(total=num_frames)
-        skip_frames = True
+        skip_frames = False
 
         if skip_frames:
             skip_rate = 2
@@ -120,7 +121,7 @@ class DemoPostProcessor:
             pbar.update(1)
 
             # skip frames?
-            if frame % skip_rate == 0:
+            if skip_frames and frame % skip_rate == 0:
                 return
 
             ax1.clear()
@@ -166,14 +167,14 @@ class DemoPostProcessor:
 
     def single_example(self):
         logging.info("Making single example")
-        random_timestep = np.random.randint(0, len(self.demo_data[constants.RGB_KEY]))
+        random_timestep = np.random.randint(0, len(self.demo_data[constants.FORWARD_RGB_CAMERA]))
 
-        rgb_image = self.demo_data[constants.RGB_KEY][random_timestep]
-        depth_image = self.demo_data[constants.DEPTH_KEY][random_timestep]
+        rgb_image = self.demo_data[constants.FORWARD_RGB_CAMERA][random_timestep]
+        depth_image = self.demo_data[constants.FORWARD_DEPTH_CAMERA][random_timestep]
         command = self.demo_data[constants.COMMAND_KEY][random_timestep]
 
         # Stack the RGB and depth images side by side
-        merged_image = np.hstack((rgb_image, np.expand_dims(depth_image, axis=2)))
+        merged_image = np.hstack((rgb_image, depth_image))
 
         # Convert to uint8 format if necessary (assuming depth is in a different format)
         merged_image = merged_image.astype(np.uint8)
@@ -186,7 +187,7 @@ class DemoPostProcessor:
         text_position = (10, 30)  # Adjust text position as needed
         cv2.putText(
             merged_image,
-            command,
+            f'{command}',
             text_position,
             font,
             font_scale,
@@ -195,12 +196,13 @@ class DemoPostProcessor:
         )
 
         # Save the merged image as a file
-        output_image = f"single_example_indx_{random_timestep}.png"
+        output_image = str(self.demo_post_folder / f"single_example_indx_{random_timestep}.png")
         cv2.imwrite(output_image, merged_image)
 
         print("Image creation complete.")
 
     def compare_preds_with_truth(self):
+        pass
         
 
     def _load_all_run_data(self):
@@ -211,13 +213,20 @@ class DemoPostProcessor:
 
         logging.info(f"Num partial logs: {num_partial_logs}")
         for i in range(1, num_partial_logs + 1):
-            with gzip.open(
-                self.demo_folder / utils.make_partial_run_label(i), "rb"
-            ) as file:
-                p = pkl.Unpickler(file)
-                partial_log = p.load()
-                for key in self.demo_data:
-                    self.demo_data[key] += partial_log[key]
+            if self.demo_compressed:
+                with gzip.open(
+                    self.demo_folder / utils.make_partial_run_label(i), "rb"
+                ) as file:
+                    p = pkl.Unpickler(file)
+                    partial_log = p.load()
+                    for key in self.demo_data:
+                        self.demo_data[key] += partial_log[key]
+            else:
+                 with (self.demo_folder / utils.make_partial_run_label(i)).open(mode='rb') as file:
+                    p = pkl.Unpickler(file)
+                    partial_log = p.load()
+                    for key in self.demo_data:
+                        self.demo_data[key] += partial_log[key]
 
 
 def parse_args():
@@ -227,6 +236,7 @@ def parse_args():
     parser.add_argument("--demo_folder", type=str, required=True)
     parser.add_argument("--demo_name", type=str, required=True)
     parser.add_argument("--run_num", type=int, required=True)
+    parser.add_argument("--demo_compressed", action='store_true')
 
     # define actions to do
     parser.add_argument("--video", action="store_true")
@@ -244,6 +254,7 @@ def main():
         demo_folder=inputs.demo_folder,
         demo_name=inputs.demo_name,
         run_number=inputs.run_num,
+        demo_compressed=inputs.demo_compressed
     )
 
     if inputs.video:

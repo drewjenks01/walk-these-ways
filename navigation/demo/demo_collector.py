@@ -13,15 +13,15 @@ class DemoCollector:
         self.demo_name = demo_name
 
         # determine demo folder, create if doesnt exists
-        self.save_path = constants.DEMO_BASE_PATH / demo_folder / self.demo_name
-        if not self.save_path.exists():
-            run_count = 1
-            self.save_path.mkdir(parents=True)
+        self.save_path_base = constants.DEMO_BASE_PATH / demo_folder / self.demo_name
+        if not self.save_path_base.exists():
+            self.run_count = 1
+            self.save_path_base.mkdir(parents=True)
         else:
-            run_count = len(os.listdir(self.save_path)) + 1
+            self.run_count = len(os.listdir(self.save_path_base)) + 1
 
         # create the demo run folder
-        self.save_path = self.save_path / utils.make_run_label(run_count)
+        self.save_path = self.save_path_base / utils.make_run_label(self.run_count)
         self.save_path.mkdir()
 
         # define inital partial run file
@@ -47,8 +47,8 @@ class DemoCollector:
 
     def add_data_to_partial_run(self, data: dict) -> None:
         assert self.currently_collecting, 'Make sure to call start_collecting()'
-        assert data.keys() == self.get_current_demo_data().keys()
-        for key, val in data:
+        assert data.keys() == self.get_current_demo_data().keys(), f'{data.keys()} != {self.get_current_demo_data().keys()} '
+        for key, val in data.items():
             self.demo_data[key].append(val)
         
         self.partial_demo_timestep += 1
@@ -63,10 +63,7 @@ class DemoCollector:
 
     def end_and_save_full_demo(self) -> None:
         # save current demo
-        self._reset_demo(partial_save=True)
-
-        # reset for new demo
-        self._reset_demo(soft_reset=True)
+        self._reset_demo(partial_save=True, soft_reset=True)
 
     def get_current_demo_data(self) -> dict:
         return self.demo_data
@@ -86,7 +83,7 @@ class DemoCollector:
 
         if partial_save:
             # store the current demo data as a partial run
-            logging.info(f"Storing partial demo: {self.save_path}")
+            logging.info(f"Storing partial demo of length={len(self.demo_data[constants.COMMAND_KEY])}: {self.save_path}")
             with self.save_path.open(mode="wb") as file:
                 pkl.dump(self.demo_data, file)
 
@@ -95,10 +92,12 @@ class DemoCollector:
             # update demo file name
             self.partial_run_count += 1
 
-        elif hard_reset or soft_reset:
+        if hard_reset or soft_reset:
             if hard_reset:
                 # delete current run folder
                 self._delete_partial_saves()
+            else:
+                self.run_count+=1
 
             # reset demo data
             self.demo_data = utils.get_empty_demo_data()
@@ -108,19 +107,17 @@ class DemoCollector:
 
             self.currently_collecting=False
 
-        else:
-            raise AssertionError(
-                "Reset partial demo called, but not doing anything.\
-                                Check function inputs."
-            )
-
-        self.save_path = self.save_path / utils.make_partial_run_label(
+        self.save_path = self.save_path_base / utils.make_run_label(self.run_count) / utils.make_partial_run_label(
             self.partial_run_count
         )
+        logging.info(f'New save path: {self.save_path}')
+        if not self.save_path.exists():
+            self.save_path.mkdir(parents=True)
         self.partial_demo_timestep = 0
 
     def _delete_partial_saves(self):
         # delete current run folder
+        logging.info(f'Deleting {self.save_path.parent}')
         shutil.rmtree(self.save_path.parent)
 
         # re-create run folder

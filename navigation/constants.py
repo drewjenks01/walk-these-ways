@@ -13,16 +13,13 @@ NUM_GAITS = 3
 COMMAND_NAMES = ["x", "y", "yaw", "gait"]
 COMMAND_KEY = "Commands"
 NUM_COMMANDS = len(COMMAND_NAMES)
-TRAINED_MODEL_PATH = pathlib.Path("navigation/demos_models/trained_vision_models")
-
-VISION_RGB_KEY = "Image1st"
-VISION_DEPTH_KEY = "DepthImg"
-VISION_COMMAND_KEY = "Commands"
+TRAINED_VISION_MODEL_PATH = pathlib.Path("navigation/data/trained_vision_models")
 
 FORWARD_RGB_CAMERA = 'forward_rgb'
 FORWARD_DEPTH_CAMERA = 'forward_depth'
 DOWNWARD_RGB_CAMERA = 'downward_rgb'
 DOWNWARD_DEPTH_CAMERA = 'downward_depth'
+CAMERA_IMAGE_NAMES = [FORWARD_RGB_CAMERA, FORWARD_DEPTH_CAMERA, DOWNWARD_RGB_CAMERA, DOWNWARD_DEPTH_CAMERA]
 CAMERA_FORWARD_RELATIVE_LOC = [0.0 , 0.0, 0.5]
 CAMERA_DOWNWARD_RELATIVE_LOC = []
 CAMERA_HEIGHT_WIDTH = []

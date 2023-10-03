@@ -10,7 +10,7 @@ DEMO_PARTIAL_RUN_LABEL = "log"
 # VISION
 NUM_CAMERAS = 3
 NUM_GAITS = 3
-COMMAND_NAMES = ["x", "y", "yaw", "gait"]
+COMMAND_NAMES = ["y", "yaw", "gait"]
 COMMAND_KEY = "Commands"
 NUM_COMMANDS = len(COMMAND_NAMES)
 TRAINED_VISION_MODEL_PATH = pathlib.Path("navigation/data/trained_vision_models")
@@ -59,8 +59,8 @@ DUCK_GAIT_PARAMS = {
     'yaw_obs_bool': 0
 }
 GAIT_NAMES = [WALK_GAIT_NAME, CLIMB_GAIT_NAME, DUCK_GAIT_NAME]
-CLIMB_GAIT_PATH = pathlib.Path("navigation/demos_models/trained_gait_policies/climb")
-WALK_GAIT_PATH = pathlib.Path("navigation/demos_models/trained_gait_policies/walk")
+CLIMB_GAIT_PATH = pathlib.Path("navigation/data/trained_controllers/climb")
+WALK_GAIT_PATH = pathlib.Path("navigation/data/trained_controllers/walk")
 
 # MISC
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -20,6 +20,7 @@ from go1_gym.envs.wrappers.history_wrapper import HistoryWrapper
 from go1_gym.envs.wrappers.no_yaw_wrapper import NoYawWrapper
 
 from navigation.demo.demo_collector import DemoCollector
+from navigation.demo.utils import get_empty_demo_data
 from navigation import constants
 from navigation.vision.utils.image_processing import process_deployed
 from navigation.sim.sim_utils import (
@@ -27,6 +28,7 @@ from navigation.sim.sim_utils import (
     update_sim_view,
     update_viewer_cam,
     render_forward_depth_rgb,
+    
 )
 import gc
 
@@ -132,10 +134,13 @@ def load_env(headless=False):
     return env, env_vel, walk_policy, climb_policy
 
 
-def play_go1(make_demo:bool, demo_folder: str, demo_name: str, headless: bool):
-    if make_demo:
-        assert demo_folder and demo_name, 'Need to specifiy a folder and name to use demo.'
+def play_go1(demo_folder: str, demo_name: str, headless: bool):
+    if demo_folder and demo_name:
+        make_demo = True
         demo_collector = DemoCollector(demo_folder, demo_name)
+    else:
+        make_demo = False
+        logging.warning('No demo folder or name provided. Demo collection will not work.')
 
     env, env_vel, walk_policy, climb_policy = load_env(headless=headless)
 
@@ -178,14 +183,14 @@ def play_go1(make_demo:bool, demo_folder: str, demo_name: str, headless: bool):
             curr_policy_params = constants.WALK_GAIT_PARAMS
 
         # if 'x' button pressed on xbox, reset demo
-        if controls['x_but'] != 0:
+        if controls['x_but'] != 0 and make_demo:
             logging.info("Resetting demo")
             env.reset()
             if make_demo:
                 demo_collector.hard_reset()
 
         # read and update demo collect bool
-        if controls['y_but'] != 0:
+        if controls['y_but'] != 0 and make_demo:
             if demo_collector.currently_collecting:
                 logging.info('Saving demo')
                 demo_collector.end_and_save_full_demo()
@@ -195,11 +200,11 @@ def play_go1(make_demo:bool, demo_folder: str, demo_name: str, headless: bool):
                 demo_collector.start_collecting()
 
         # update NN control
-        if controls['l_trig'] != 0 and demo_collector.using_NN:
+        if make_demo and controls['l_trig'] != 0 and demo_collector.using_NN:
             logging.info("NN policy: off")
             demo_collector.using_NN = False
 
-        if controls['r_trig'] != 0:
+        if controls['r_trig'] != 0 and make_demo:
             if demo_collector.NN_ready:
                 logging.info('NN policy: on')
                 demo_collector.using_NN = True
@@ -270,15 +275,16 @@ def play_go1(make_demo:bool, demo_folder: str, demo_name: str, headless: bool):
 
         # collect commands every timestep -> will be averages
         if make_demo and demo_collector.currently_collecting and time.time() - demo_collector.timer >= demo_collector.how_often_capture_data:
-            rgb_img, depth_img = render_forward_depth_rgb(env)
-            frame_data = {
-                "y_vel": controls['y_vel'],
-                "yaw": controls['yaw'],
-                "gait": curr_policy_params['gait'],
-                "forward_rgb": rgb_img,
-                "forward_depth": depth_img
+            rgb_imgs = env.get_rgb_images(env_ids = [0])
+            depth_imgs = env.get_depth_images(env_ids = [0])
 
-            }
+            rgb_img = rgb_imgs['forward']
+            depth_img = depth_imgs['forward']
+
+            frame_data = get_empty_demo_data()
+            frame_data["Commands"]= [controls['y_vel'],controls['yaw'],curr_policy_params['gait']]
+            frame_data["forward_rgb"]= rgb_img
+            frame_data['forward_depth'] = depth_img
             demo_collector.add_data_to_partial_run(frame_data)
 
 def parse_args():
@@ -286,11 +292,6 @@ def parse_args():
 
     parser = argparse.ArgumentParser(description="Train a full vision model.")
 
-    parser.add_argument(
-        "--make_demo",
-        action="store_true",
-        help="Whether or not you will record a demo.",
-    )
     parser.add_argument("--demo_folder", type=str)
     parser.add_argument("--demo_name", type=str)
     parser.add_argument(
@@ -303,14 +304,13 @@ def parse_args():
     return args
 
 
-def main(make_demo, demo_folder, demo_name, headless):
-    play_go1(make_demo, demo_folder, demo_name, headless=headless)
+def main(demo_folder, demo_name, headless):
+    play_go1(demo_folder, demo_name, headless=headless)
 
 
 if __name__ == "__main__":
     args = parse_args()
-    make_demo = args.make_demo
     demo_name = args.demo_name
     demo_folder = args.demo_folder
     headless = args.headless
-    main(make_demo, demo_folder, demo_name, headless)
+    main(demo_folder, demo_name, headless)

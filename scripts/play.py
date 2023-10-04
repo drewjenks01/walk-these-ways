@@ -26,7 +26,6 @@ from navigation.vision.utils.image_processing import process_deployed
 from navigation.sim.sim_utils import (
     create_xbox_controller,
     update_sim_view,
-    update_viewer_cam,
     
 )
 import gc

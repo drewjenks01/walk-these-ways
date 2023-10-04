@@ -83,7 +83,9 @@ class DemoCollector:
 
         if partial_save:
             # store the current demo data as a partial run
-            logging.info(f"Storing partial demo of length={len(self.demo_data[constants.COMMAND_KEY])}: {self.save_path}")
+            if not self.save_path.parent.exists():
+                self.save_path.parent.mkdir()
+            logging.info(f"Storing partial demo of length={len(self.demo_data[constants.COMMAND_KEY])} to {self.save_path}")
             with self.save_path.open(mode="wb") as file:
                 pkl.dump(self.demo_data, file)
 
@@ -110,9 +112,6 @@ class DemoCollector:
         self.save_path = self.save_path_base / utils.make_run_label(self.run_count) / utils.make_partial_run_label(
             self.partial_run_count
         )
-        logging.info(f'New save path: {self.save_path}')
-        if not self.save_path.exists():
-            self.save_path.mkdir(parents=True)
         self.partial_demo_timestep = 0
 
     def _delete_partial_saves(self):

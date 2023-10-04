@@ -27,7 +27,6 @@ from navigation.sim.sim_utils import (
     create_xbox_controller,
     update_sim_view,
     update_viewer_cam,
-    render_forward_depth_rgb,
     
 )
 import gc
@@ -87,8 +86,6 @@ def load_env(headless=False):
     Cfg.domain_rand.randomize_joint_friction = False
     Cfg.domain_rand.randomize_com_displacement = False
 
-    Cfg.camera.use_camera = True
-
     # stair policy
     Cfg.env.num_observations = 71
     Cfg.env.num_scalar_observations = 71
@@ -109,7 +106,7 @@ def load_env(headless=False):
 
     Cfg.terrain.generated = True
     Cfg.terrain.generated_name = "0014"
-    Cfg.terrain.generated_diff = "icra"
+    Cfg.terrain.generated_diff = "easy"
     Cfg.terrain.icra = False
     Cfg.terrain.maze_terrain = Cfg.terrain.generated
 
@@ -124,6 +121,7 @@ def load_env(headless=False):
     Cfg.perception.camera_poses = [[0.3, 0, 0], [0.3, 0, -0.08]]
     Cfg.perception.camera_rpys = [[0.0, 0, 0], [0, -3.14 / 2, 0]]
     Cfg.perception.compute_depth = True
+    Cfg.perception.compute_rgb = True
 
     env_vel = VelocityTrackingEasyEnv(sim_device="cuda:0", headless=False, cfg=Cfg)
     env = NoYawWrapper(env_vel, yaw_bool=False)
@@ -275,6 +273,7 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool):
 
         # collect commands every timestep -> will be averages
         if make_demo and demo_collector.currently_collecting and time.time() - demo_collector.timer >= demo_collector.how_often_capture_data:
+            env.render()
             rgb_imgs = env.get_rgb_images(env_ids = [0])
             depth_imgs = env.get_depth_images(env_ids = [0])
 

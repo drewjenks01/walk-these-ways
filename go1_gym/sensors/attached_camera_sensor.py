@@ -1,4 +1,3 @@
-from sympy import root
 from .sensor import Sensor
 from isaacgym import gymapi
 from isaacgym.torch_utils import *
@@ -41,8 +40,7 @@ class AttachedCameraSensor(Sensor):
             else:
                 follow_mode = gymapi.CameraFollowMode.FOLLOW_TRANSFORM
 
-            root_handle = self.gym.get_actor_root_rigid_body_handle(self.env.envs[env_id], self.attached_robot_asset)
-            self.env.gym.attach_camera_to_body(cam, self.env.envs[env_id], root_handle, transform, follow_mode)
+            self.env.gym.attach_camera_to_body(cam, self.env.envs[env_id], 0, transform, follow_mode)
 
             self.cams.append(cam)
 

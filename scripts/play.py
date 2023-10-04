@@ -128,6 +128,7 @@ def load_env(headless=False):
 
     walk_policy = load_policy(constants.WALK_GAIT_PATH)
     climb_policy = load_policy(constants.CLIMB_GAIT_PATH)
+    parkour_depth_policy = load_policy()
 
     return env, env_vel, walk_policy, climb_policy
 
@@ -158,6 +159,7 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool):
                 actions = climb_policy(obs)
             elif curr_policy == constants.DUCK_GAIT_NAME:
                 actions = walk_policy(obs)
+            elif curr_policy
 
         update_sim_view(env)
         #update_viewer_cam(env)

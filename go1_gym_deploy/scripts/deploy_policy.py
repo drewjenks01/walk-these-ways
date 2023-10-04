@@ -8,25 +8,28 @@ from go1_gym_deploy.envs.lcm_agent import LCMAgent
 from go1_gym_deploy.utils.cheetah_state_estimator import StateEstimator
 from go1_gym_deploy.utils.command_profile import *
 
+from navigation import constants
+
 import pathlib
 
 lc = lcm.LCM("udpm://239.255.76.67:7667?ttl=255")
 
 def load_and_run_policy(label, experiment_name, max_vel=1.0, max_yaw_vel=1.0):
 
-    walk_dir = f"../../runs/{label}/pretrain-v0"
-    stair_dir = f"../../runs/{label}/pretrain-stairs"
+    walk_dir = constants.WALK_GAIT_PATH
+    climb_dir = constants.CLIMB_GAIT_NAME
+    parkour_depth_dir = constants.PARKOUR_DEPTH_GAIT_PATH
     # # load agent
     # dirs = glob.glob(f"../../runs/{label}/*")
     # logdir = sorted(dirs)[0]
 
-    with open(walk_dir+"/parameters.pkl", 'rb') as file:
+    with (walk_dir / "parameters.pkl").open(mode='rb') as file:
         pkl_cfg = pkl.load(file)
         print(pkl_cfg.keys())
         cfg = pkl_cfg["Cfg"]
         print(cfg.keys())
 
-    #update config for stair policy
+    #update config for climb policy
     cfg['env']['num_observations']=71
     cfg['env']['num_scalar_observations']=71
     cfg['env']['observe_yaw']=True
@@ -46,7 +49,8 @@ def load_and_run_policy(label, experiment_name, max_vel=1.0, max_yaw_vel=1.0):
 
 
     walk_policy = load_policy(walk_dir)
-    stair_policy = load_policy(stair_dir)
+    stair_policy = load_policy(climb_dir)
+    parkour_depth_policy = load_parkour_policy(parkour_depth_dir)
 
     # load runner
     root = f"{pathlib.Path(__file__).parent.resolve()}/../../logs/"
@@ -80,6 +84,19 @@ def load_policy(logdir):
 
     return policy
 
+def load_parkour_policy(logdir):
+    body = torch.jit.load(logdir + '/checkpoints/body_latest.jit')
+    import os
+    adaptation_module = torch.jit.load(logdir + '/checkpoints/adaptation_module_latest.jit')
+
+    def policy(obs, info):
+        i = 0
+        latent = adaptation_module.forward(obs["obs_history"].to('cpu'))
+        action = body.forward(torch.cat((obs["obs_history"].to('cpu'), latent), dim=-1))
+        info['latent'] = latent
+        return action
+
+    return policy
 
 if __name__ == '__main__':
     label = "gait-conditioned-agility"

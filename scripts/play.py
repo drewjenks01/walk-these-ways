@@ -178,7 +178,7 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool):
                 env.change_current_controller(constants.WALK_GAIT_NAME)
                 env.walk_env.yaw_bool = False
                 actions = walk_policy(obs)
-            elif curr_policy == constants.PARKOUR_DEPTH_GAIT_PATH:
+            elif curr_policy == 'parkour':
                 env.change_current_controller('parkour')
                 actions = parkour_depth_policy(obs, depth_img)
 
@@ -195,6 +195,9 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool):
             curr_policy_params = constants.CLIMB_GAIT_PARAMS
         elif controls['down_dpad']:
             curr_policy = constants.DUCK_GAIT_NAME
+            curr_policy_params = constants.DUCK_GAIT_PARAMS
+        elif controls['l_dpad']:
+            curr_policy = 'parkour'
             curr_policy_params = constants.DUCK_GAIT_PARAMS
 
 
@@ -289,19 +292,19 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool):
 
         # TODO: scale x_vel if using wtw
 
-
-        env.commands[:, 0] = controls['y_vel']*1.5
-        env.commands[:, 1] = 0.0
-        env.commands[:, 2] = controls['yaw']*1.5
-        env.commands[:, 3] = curr_policy_params['body_height_cmd']
-        env.commands[:, 4] = curr_policy_params['step_frequency_cmd']
-        env.commands[:, 5:8] = curr_policy_params['gait']
-        env.commands[:, 8] = 0.5
-        env.commands[:, 9] = curr_policy_params['footswing_height_cmd']
-        env.commands[:, 10] = curr_policy_params['pitch_cmd']
-        env.commands[:, 11] = curr_policy_params['roll_cmd']
-        env.commands[:, 12] = curr_policy_params['stance_width_cmd']
-        env.yaw_bool = curr_policy_params['yaw_obs_bool']
+        if curr_policy != 'parkour':
+            env.commands[:, 0] = controls['y_vel']*1.5
+            env.commands[:, 1] = 0.0
+            env.commands[:, 2] = controls['yaw']*1.5
+            env.commands[:, 3] = curr_policy_params['body_height_cmd']
+            env.commands[:, 4] = curr_policy_params['step_frequency_cmd']
+            env.commands[:, 5:8] = curr_policy_params['gait']
+            env.commands[:, 8] = 0.5
+            env.commands[:, 9] = curr_policy_params['footswing_height_cmd']
+            env.commands[:, 10] = curr_policy_params['pitch_cmd']
+            env.commands[:, 11] = curr_policy_params['roll_cmd']
+            env.commands[:, 12] = curr_policy_params['stance_width_cmd']
+            env.yaw_bool = curr_policy_params['yaw_obs_bool']
         obs, rew, done, info = env.step(actions)
 
 def parse_args():

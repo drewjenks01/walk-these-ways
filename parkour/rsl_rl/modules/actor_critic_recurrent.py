@@ -35,7 +35,7 @@ import torch.nn as nn
 from torch.distributions import Normal
 from torch.nn.modules import rnn
 from .actor_critic import ActorCritic, get_activation
-from rsl_rl.utils import unpad_trajectories
+from parkour.rsl_rl.utils import unpad_trajectories
 
 class ActorCriticRecurrent(ActorCritic):
     is_recurrent = True

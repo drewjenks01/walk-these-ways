@@ -1,6 +1,6 @@
 from turtle import forward
 import numpy as np
-from rsl_rl.modules.actor_critic import get_activation
+from parkour.rsl_rl.modules.actor_critic import get_activation
 
 import torch
 import torch.nn as nn

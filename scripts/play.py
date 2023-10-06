@@ -1,6 +1,4 @@
 # %%
-from gym import make
-from httpx import head
 import isaacgym
 import torch
 import numpy as np

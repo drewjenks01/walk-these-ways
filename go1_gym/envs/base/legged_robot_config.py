@@ -6,6 +6,7 @@ from params_proto import PrefixProto, ParamsProto
 class Cfg(PrefixProto, cli=False):
     class env(PrefixProto, cli=False):
         num_envs = 1000
+        n_proprio = 53
         num_observations = 235
         num_scalar_observations = 42
         # if not None a privilige_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
@@ -61,6 +62,32 @@ class Cfg(PrefixProto, cli=False):
         priv_observe_desired_contact_states = False
         priv_observe_dummy_variable = False
 
+    class parkour(PrefixProto, cli=False):
+        using_controller = False
+
+    class depth:
+        use_camera = False
+        camera_num_envs = 192
+        camera_terrain_num_rows = 10
+        camera_terrain_num_cols = 20
+
+        position = [0.27, 0, 0.03]  # front camera
+        angle = [-5, 5]  # positive pitch down
+
+        update_interval = 5  # 5 works without retraining, 8 worse
+
+        original = (106, 60)
+        resized = (87, 58)
+        horizontal_fov = 87
+        buffer_len = 2
+        
+        near_clip = 0
+        far_clip = 2
+        dis_noise = 0.0
+        
+        scale = 1
+        invert = True
+    
     class terrain(PrefixProto, cli=False):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
         maze_terrain= False

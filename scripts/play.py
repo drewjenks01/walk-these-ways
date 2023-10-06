@@ -18,6 +18,7 @@ from go1_gym.envs.go1.go1_config import config_go1
 from go1_gym.envs.go1.velocity_tracking import VelocityTrackingEasyEnv
 from go1_gym.envs.wrappers.history_wrapper import HistoryWrapper
 from go1_gym.envs.wrappers.no_yaw_wrapper import NoYawWrapper
+from go1_gym.envs.wrappers.multi_gait_wrapper import MultiGaitWrapper
 
 from navigation.demo.demo_collector import DemoCollector
 from navigation.demo.utils import get_empty_demo_data
@@ -35,7 +36,7 @@ gc.collect()
 torch.cuda.empty_cache()
 
 
-def load_policy(logdir):
+def load_policy(logdir, parkour: bool = False):
     body = torch.jit.load(logdir / "checkpoints/body_latest.jit")
     import os
 
@@ -44,12 +45,21 @@ def load_policy(logdir):
     )
 
     def policy(obs, info={}):
-        i = 0
         latent = adaptation_module.forward(obs["obs_history"].to("cpu"))
         action = body.forward(torch.cat((obs["obs_history"].to("cpu"), latent), dim=-1))
         info["latent"] = latent
         return action
+    
+    def parkour_policy(obs, depth_img):
+        obs_student = obs[:,:53].clone()[:, 6:8]
+        depth_latent_and_yaw = adaptation_module.forward(depth_img.to("cpu"), obs_student)
+        depth_latent = depth_latent_and_yaw[:,:-2]
+        yaw = depth_latent_and_yaw[:,-2:]
+        action = body.forward(obs.detach(), hist_encoding=True, scandots_latent = depth_latent)
+        return action
 
+    if parkour:
+        return parkour_policy
     return policy
 
 
@@ -123,15 +133,13 @@ def load_env(headless=False):
     Cfg.perception.compute_depth = True
     Cfg.perception.compute_rgb = True
 
-    env_vel = VelocityTrackingEasyEnv(sim_device="cuda:0", headless=False, cfg=Cfg)
-    env = NoYawWrapper(env_vel, yaw_bool=False)
+    env = MultiGaitWrapper(Cfg)
 
     walk_policy = load_policy(constants.WALK_GAIT_PATH)
     climb_policy = load_policy(constants.CLIMB_GAIT_PATH)
-    parkour_depth_policy = load_policy()
+    parkour_depth_policy = load_policy(constants.PARKOUR_DEPTH_GAIT_PATH)
 
-    return env, env_vel, walk_policy, climb_policy
-
+    return env, walk_policy, climb_policy, parkour_depth_policy
 
 def play_go1(demo_folder: str, demo_name: str, headless: bool):
     if demo_folder and demo_name:
@@ -141,7 +149,7 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool):
         make_demo = False
         logging.warning('No demo folder or name provided. Demo collection will not work.')
 
-    env, env_vel, walk_policy, climb_policy = load_env(headless=headless)
+    env, walk_policy, climb_policy, parkour_depth_policy = load_env(headless=headless)
 
     obs = env.reset()
     joy = create_xbox_controller()
@@ -152,14 +160,28 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool):
     using_nn = False
 
     while True:
+        env.render()
+        rgb_imgs = env.walk_env.get_rgb_images(env_ids = [0])
+        depth_imgs = env.walk_env.get_depth_images(env_ids = [0])
+        rgb_img = rgb_imgs['forward']
+        depth_img = depth_imgs['forward']
+
         with torch.no_grad():
             if curr_policy == constants.WALK_GAIT_NAME:
+                env.change_current_controller(constants.WALK_GAIT_NAME)
+                env.walk_env.yaw_bool = False
                 actions = walk_policy(obs)
             elif curr_policy == constants.CLIMB_GAIT_NAME:
+                env.change_current_controller(constants.WALK_GAIT_NAME)
+                env.walk_env.yaw_bool = True
                 actions = climb_policy(obs)
             elif curr_policy == constants.DUCK_GAIT_NAME:
+                env.change_current_controller(constants.WALK_GAIT_NAME)
+                env.walk_env.yaw_bool = False
                 actions = walk_policy(obs)
-            elif curr_policy
+            elif curr_policy == constants.PARKOUR_DEPTH_GAIT_PATH:
+                env.change_current_controller('parkour')
+                actions = parkour_depth_policy(obs, depth_img)
 
         update_sim_view(env)
         #update_viewer_cam(env)
@@ -211,6 +233,16 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool):
                 # TODO: turn nn on
             else:
                 logging.info('NN not ready to be used')
+
+        # collect commands every timestep -> will be averages
+
+        if make_demo and demo_collector.currently_collecting and time.time() - demo_collector.timer >= demo_collector.how_often_capture_data :
+
+            frame_data = get_empty_demo_data()
+            frame_data["Commands"]= [controls['y_vel'],controls['yaw'],curr_policy_params['gait']]
+            frame_data["forward_rgb"]= rgb_img
+            frame_data['forward_depth'] = depth_img
+            demo_collector.add_data_to_partial_run(frame_data)
             
 
         if using_nn:
@@ -272,21 +304,6 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool):
         env.commands[:, 12] = curr_policy_params['stance_width_cmd']
         env.yaw_bool = curr_policy_params['yaw_obs_bool']
         obs, rew, done, info = env.step(actions)
-
-        # collect commands every timestep -> will be averages
-        if make_demo and demo_collector.currently_collecting and time.time() - demo_collector.timer >= demo_collector.how_often_capture_data:
-            env.render()
-            rgb_imgs = env.get_rgb_images(env_ids = [0])
-            depth_imgs = env.get_depth_images(env_ids = [0])
-
-            rgb_img = rgb_imgs['forward']
-            depth_img = depth_imgs['forward']
-
-            frame_data = get_empty_demo_data()
-            frame_data["Commands"]= [controls['y_vel'],controls['yaw'],curr_policy_params['gait']]
-            frame_data["forward_rgb"]= rgb_img
-            frame_data['forward_depth'] = depth_img
-            demo_collector.add_data_to_partial_run(frame_data)
 
 def parse_args():
     logging.basicConfig(level=logging.INFO)

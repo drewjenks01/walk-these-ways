@@ -32,10 +32,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from rsl_rl.modules import ActorCriticRMA
-from rsl_rl.storage import RolloutStorage
+from parkour.rsl_rl.modules import ActorCriticRMA
+from parkour.rsl_rl.storage import RolloutStorage
 import wandb
-from rsl_rl.utils import unpad_trajectories
+from parkour.rsl_rl.utils import unpad_trajectories
 
 
 class RMS(object):

@@ -40,9 +40,9 @@ import wandb
 # import ml_runlog
 import datetime
 
-from rsl_rl.algorithms import PPO
-from rsl_rl.modules import *
-from rsl_rl.env import VecEnv
+from parkour.rsl_rl.algorithms import PPO
+from parkour.rsl_rl.modules import *
+from parkour.rsl_rl.env import VecEnv
 import sys
 from copy import copy, deepcopy
 import warnings

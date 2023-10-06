@@ -40,12 +40,12 @@ class MultiGaitWrapper:
             return self.parkour_env.render()
         
 
-    def prepare_parkour_policy(self):
-        parkour_cfg, parkour_train_cfg = task_registry.get_cfgs(name='a1')
-        self.parkour_env, _ = task_registry.make_env(name='a1', env_cfg=self.parkour_cfg)
-        parkour_train_cfg.runner.resume = True
-        ppo_runner, train_cfg, log_pth = task_registry.make_alg_runner(log_root = log_pth, env=self.parkour_env, name='a1', args=None, train_cfg=train_cfg, return_log_dir=True)
-        policy = torch.jit.load(constants.PARKOUR_DEPTH_GAIT_PATH / )
+    # def prepare_parkour_policy(self):
+    #     parkour_cfg, parkour_train_cfg = task_registry.get_cfgs(name='a1')
+    #     self.parkour_env, _ = task_registry.make_env(name='a1', env_cfg=self.parkour_cfg)
+    #     parkour_train_cfg.runner.resume = True
+    #     ppo_runner, train_cfg, log_pth = task_registry.make_alg_runner(log_root = log_pth, env=self.parkour_env, name='a1', args=None, train_cfg=train_cfg, return_log_dir=True)
+    #     policy = torch.jit.load(constants.PARKOUR_DEPTH_GAIT_PATH / )
 
     
     def change_current_controller(self, controller_name: str):

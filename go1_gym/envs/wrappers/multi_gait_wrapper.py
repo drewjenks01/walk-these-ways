@@ -1,6 +1,6 @@
 from go1_gym.envs.base.legged_robot_config import Cfg as walk_cfg
-from parkour.envs import parkour_legged_robot
-from parkour.envs.parkour_legged_robot_config import LeggedRobotCfg as parkour_cfg
+from parkour.envs.base import legged_robot
+from parkour.envs.base.legged_robot_config import LeggedRobotCfg as parkour_cfg
 from go1_gym.envs.base import legged_robot
 from go1_gym.envs.wrappers import no_yaw_wrapper
 from go1_gym.envs.go1.velocity_tracking import VelocityTrackingEasyEnv

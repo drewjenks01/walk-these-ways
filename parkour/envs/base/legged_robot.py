@@ -28,7 +28,6 @@
 #
 # Copyright (c) 2021 ETH Zurich, Nikita Rudin
 
-from legged_gym import LEGGED_GYM_ROOT_DIR, envs
 from time import time
 from warnings import WarningMessage
 import numpy as np
@@ -41,11 +40,10 @@ import torch, torchvision
 from torch import Tensor
 from typing import Tuple, Dict
 
-from legged_gym import LEGGED_GYM_ROOT_DIR
-from legged_gym.envs.base.base_task import BaseTask
-from legged_gym.utils.terrain import Terrain
-from legged_gym.utils.math import *
-from legged_gym.utils.helpers import class_to_dict
+from parkour.envs.base.base_task import BaseTask
+# from parkour.utils.terrain import Terrain
+from parkour.utils.math import *
+from parkour.utils.helpers import class_to_dict
 from scipy.spatial.transform import Rotation as R
 from .legged_robot_config import LeggedRobotCfg
 

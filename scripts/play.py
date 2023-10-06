@@ -74,7 +74,6 @@ def load_config_from_policy(policy_path: pathlib.Path):
                     #     continue
                     setattr(getattr(Cfg, key), key2, value2)
 
-
 def load_env(headless=False):
     load_config_from_policy(constants.WALK_GAIT_PATH)
 

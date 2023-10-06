@@ -31,7 +31,7 @@
 from posixpath import relpath
 from torch.nn.modules.activation import ReLU
 from torch.nn.modules.pooling import MaxPool2d
-from parkour.base_config import BaseConfig
+from parkour.envs.base.base_config import BaseConfig
 import torch.nn as nn
 class LeggedRobotCfg(BaseConfig):
     class play:

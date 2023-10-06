@@ -59,9 +59,9 @@ DUCK_GAIT_PARAMS = {
     'yaw_obs_bool': 0
 }
 GAIT_NAMES = [WALK_GAIT_NAME, CLIMB_GAIT_NAME, DUCK_GAIT_NAME]
-CLIMB_GAIT_PATH = pathlib.Path("navigation/data/trained_controllers/climb")
-WALK_GAIT_PATH = pathlib.Path("navigation/data/trained_controllers/walk")
-PARKOUR_DEPTH_GAIT_PATH = pathlib.Path("navigation/data/trained_controllers/parkour_depth")
+CLIMB_GAIT_PATH = pathlib.Path("navigation/data_and_models/trained_controllers/climb")
+WALK_GAIT_PATH = pathlib.Path("navigation/data_and_models/trained_controllers/walk")
+PARKOUR_DEPTH_GAIT_PATH = pathlib.Path("navigation/data_and_models/trained_controllers/parkour_depth")
 
 # MISC
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")

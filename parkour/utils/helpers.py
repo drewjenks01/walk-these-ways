@@ -78,7 +78,7 @@ def set_seed(seed):
 def parse_sim_params(args, cfg):
     # code from Isaac Gym Preview 2
     # initialize sim params
-    sim_params = gymapi.SimParams()
+    #sim_params = gymapi.SimParams()
 
     # set some values from args
     if args.physics_engine == gymapi.SIM_FLEX:
@@ -90,13 +90,12 @@ def parse_sim_params(args, cfg):
     sim_params.use_gpu_pipeline = args.use_gpu_pipeline
 
     # if sim options are provided in cfg, parse them and update/override above:
-    if "sim" in cfg:
-        gymutil.parse_sim_config(cfg["sim"], sim_params)
+   # if "sim" in cfg:
+       # gymutil.parse_sim_config(cfg["sim"], sim_params)
 
     # Override num_threads if passed on the command line
-    if args.physics_engine == gymapi.SIM_PHYSX and args.num_threads > 0:
-        sim_params.physx.num_threads = args.num_threads
-
+    #if args.physics_engine == gymapi.SIM_PHYSX and args.num_threads > 0:
+      #  sim_params.physx.num_threads = args.num_threads
     return sim_params
 
 def get_load_path(root, load_run=-1, checkpoint=-1, model_name_include="model"):

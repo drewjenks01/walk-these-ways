@@ -12,11 +12,11 @@ class MultiGaitWrapper:
 
     VALID_POLICIES = {'walk', 'parkour'}
 
-    def __init__(self, walk_cfg, parkour_cfg):
+    def __init__(self, walk_cfg):
     
         self.climb_bool = False     # if climb, then yaw bool matters for walk controller
         self.walk_env = no_yaw_wrapper.NoYawWrapper(VelocityTrackingEasyEnv(sim_device="cuda:0", headless=False, cfg=walk_cfg), self.climb_bool)
-        self.parkour_env, _ = task_registry.make_env(name='a1', env_cfg=parkour_cfg)
+        self.parkour_env, _ = task_registry.make_env(name='a1', env_cfg=None)
 
         self.current_policy = 'walk'    # walk, parkour -- duck and climb within walk
 

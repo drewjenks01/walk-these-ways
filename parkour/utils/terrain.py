@@ -33,10 +33,10 @@ from numpy.random import choice
 from scipy import interpolate
 import random
 from isaacgym import terrain_utils
-from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg
+from parkour.envs.base.legged_robot_config import LeggedRobotCfg
 from scipy import ndimage
-from pydelatin import Delatin
-import pyfqmr
+# from pydelatin import Delatin
+# import pyfqmr
 from scipy.ndimage import binary_dilation
 
 

@@ -28,7 +28,7 @@
 #
 # Copyright (c) 2021 ETH Zurich, Nikita Rudin
 
-from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
+from parkour.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
 class A1RoughCfg( LeggedRobotCfg ):
     class init_state( LeggedRobotCfg.init_state ):

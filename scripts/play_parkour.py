@@ -29,7 +29,7 @@ from navigation.sim.sim_utils import (
 )
 import gc
 
-from parkour.utils import task_registry
+from parkour.utils import task_registry, get_args
 
 gc.collect()
 torch.cuda.empty_cache()
@@ -62,7 +62,7 @@ def load_policy(logdir, parkour: bool = False):
     return policy
 
 
-def load_env(headless=False):
+def load_env():
     env_cfg, train_cfg = task_registry.get_cfgs(name='a1')
 
     env_cfg.env.num_envs = 1
@@ -106,19 +106,19 @@ def load_env(headless=False):
 
     # prepare env
     depth_latent_buffer = []
-    env, _ = task_registry.make_env(name='a1', env_cfg=env_cfg)
+    env, _ = task_registry.make_env(name='a1', env_cfg=env_cfg, args=args)
 
     # load policy
     train_cfg.runner.resume = True
 
     return env, env_cfg, train_cfg
 
-def play_go1(headless: bool):
+def play_go1(args):
 
-    env, env_cfg, train_cfgs = load_env(headless=headless)
+    env, env_cfg, train_cfgs = load_env()
     obs = env.get_observations()
 
-    ppo_runner, train_cfg, log_pth = task_registry.make_alg_runner(log_root = log_pth, env=env, name='a1', train_cfg=train_cfg, return_log_dir=True)
+    ppo_runner, train_cfg, log_pth = task_registry.make_alg_runner(log_root = log_pth, env=env, name='a1', train_cfg=train_cfg, return_log_dir=True, args=args)
     policy_jit = torch.jit.load('navigation/data_and_models/trained_controllers/parkour_depth/checkpoints/051-42-14000-base_jit.pt', device=env.device)
 
     actions = torch.zeros(env.num_envs, 12, device=env.device, requires_grad=False)
@@ -269,11 +269,10 @@ def parse_args():
     return args
 
 
-def main(headless):
-    play_go1(headless=headless)
+def main(args):
+    play_go1(args)
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    headless = args.headless
-    main(headless)
+    args = get_args()
+    main(args)

@@ -41,7 +41,7 @@ from torch import Tensor
 from typing import Tuple, Dict
 
 from parkour.envs.base.base_task import BaseTask
-# from parkour.utils.terrain import Terrain
+from parkour.utils.terrain import Terrain
 from parkour.utils.math import *
 from parkour.utils.helpers import class_to_dict
 from scipy.spatial.transform import Rotation as R

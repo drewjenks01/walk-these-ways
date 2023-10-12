@@ -64,6 +64,7 @@ def load_policy(logdir, parkour: bool = False):
 
 def load_env():
     env_cfg, train_cfg = task_registry.get_cfgs(name='a1')
+    print(env_cfg.sim)
 
     env_cfg.env.num_envs = 1
     env_cfg.env.episode_length_s = 60

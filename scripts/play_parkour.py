@@ -10,18 +10,6 @@ import pickle as pkl
 import os
 import argparse
 
-from go1_gym.envs import *
-from go1_gym.envs.base.legged_robot_config import Cfg
-from go1_gym.envs.go1.go1_config import config_go1
-from go1_gym.envs.go1.velocity_tracking import VelocityTrackingEasyEnv
-from go1_gym.envs.wrappers.history_wrapper import HistoryWrapper
-from go1_gym.envs.wrappers.no_yaw_wrapper import NoYawWrapper
-from go1_gym.envs.wrappers.multi_gait_wrapper import MultiGaitWrapper
-
-from navigation.demo.demo_collector import DemoCollector
-from navigation.demo.utils import get_empty_demo_data
-from navigation import constants
-from navigation.vision.utils.image_processing import process_deployed
 from navigation.sim.sim_utils import (
     create_xbox_controller,
     update_sim_view,
@@ -33,34 +21,6 @@ from parkour.utils import task_registry, get_args
 
 gc.collect()
 torch.cuda.empty_cache()
-
-
-def load_policy(logdir, parkour: bool = False):
-    body = torch.jit.load(logdir / "checkpoints/body_latest.jit")
-    import os
-
-    adaptation_module = torch.jit.load(
-        logdir / "checkpoints/adaptation_module_latest.jit"
-    )
-
-    def policy(obs, info={}):
-        latent = adaptation_module.forward(obs["obs_history"].to("cpu"))
-        action = body.forward(torch.cat((obs["obs_history"].to("cpu"), latent), dim=-1))
-        info["latent"] = latent
-        return action
-    
-    def parkour_policy(obs, depth_img):
-        obs_student = obs[:,:53].clone()[:, 6:8]
-        depth_latent_and_yaw = adaptation_module.forward(depth_img.to("cpu"), obs_student)
-        depth_latent = depth_latent_and_yaw[:,:-2]
-        yaw = depth_latent_and_yaw[:,-2:]
-        action = body.forward(obs.detach(), hist_encoding=True, scandots_latent = depth_latent)
-        return action
-
-    if parkour:
-        return parkour_policy
-    return policy
-
 
 def load_env():
     env_cfg, train_cfg = task_registry.get_cfgs(name='a1')

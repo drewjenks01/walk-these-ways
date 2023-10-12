@@ -65,7 +65,7 @@ def load_policy(logdir, parkour: bool = False):
 def load_env(headless=False):
     env_cfg, train_cfg = task_registry.get_cfgs(name='a1')
 
-    env_cfg.env.num_envs = 16 if not args.save else 64
+    env_cfg.env.num_envs = 1
     env_cfg.env.episode_length_s = 60
     env_cfg.commands.resampling_time = 60
     env_cfg.terrain.num_rows = 5
@@ -113,13 +113,7 @@ def load_env(headless=False):
 
     return env, env_cfg, train_cfg
 
-def play_go1(demo_folder: str, demo_name: str, headless: bool):
-    if demo_folder and demo_name:
-        make_demo = True
-        demo_collector = DemoCollector(demo_folder, demo_name)
-    else:
-        make_demo = False
-        logging.warning('No demo folder or name provided. Demo collection will not work.')
+def play_go1(headless: bool):
 
     env, env_cfg, train_cfgs = load_env(headless=headless)
     obs = env.get_observations()

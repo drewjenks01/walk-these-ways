@@ -22,8 +22,14 @@ from parkour.utils import task_registry, get_args
 gc.collect()
 torch.cuda.empty_cache()
 
+<<<<<<< HEAD
 def load_env(headless=False):
     load_config_from_policy(constants.WALK_GAIT_PATH)
+=======
+def load_env():
+    env_cfg, train_cfg = task_registry.get_cfgs(name='a1')
+    print(env_cfg.sim)
+>>>>>>> 19ac2c45dc81f24f721b6e1b5e7953a5339f5a08
 
     # turn off DR for evaluation script
     Cfg.domain_rand.push_robots = False

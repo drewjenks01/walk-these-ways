@@ -9,6 +9,7 @@ from isaacgym.torch_utils import *
 assert gymtorch
 import torch
 import numpy as np
+import torchvision
 
 from go1_gym import MINI_GYM_ROOT_DIR
 from go1_gym.envs.base.base_task import BaseTask
@@ -80,6 +81,9 @@ class LeggedRobot(BaseTask):
         self.num_still_evaluating = 0
 
         self.global_counter = 0
+
+        self.resize_transform = torchvision.transforms.Resize((self.cfg.depth.resized[1], self.cfg.depth.resized[0]), 
+                                                              interpolation=torchvision.transforms.InterpolationMode.BICUBIC)
 
     def update_depth_buffer(self):
 
@@ -382,6 +386,12 @@ class LeggedRobot(BaseTask):
         self.command_sums["lin_vel_residual"] += (self.base_lin_vel[:, 0] - self.commands[:, 0]) ** 2
         self.command_sums["ang_vel_residual"] += (self.base_ang_vel[:, 2] - self.commands[:, 2]) ** 2
         self.command_sums["ep_timesteps"] += 1
+   
+    def reindex(self, vec):
+        return vec[:, [3,4,5,0,1,2,9,10,11,6,7,8]]
+    
+    def reindex_feet(self, vec):
+        return vec[:, [1,0,3,2]]
 
     def compute_parkour_observations(self):
         """ 
@@ -399,8 +409,8 @@ class LeggedRobot(BaseTask):
                             self.delta_next_yaw[:, None],
                             0*self.commands[:, 0:2], 
                             self.commands[:, 0:1],  #[1,1]
-                            (self.env_class != 17).float()[:, None], 
-                            (self.env_class == 17).float()[:, None],
+                            (torch.tensor([0]) != 17).float()[:, None], 
+                            (torch.tensor([0]) == 17).float()[:, None],
                             self.reindex((self.dof_pos - self.default_dof_pos_all) * self.obs_scales.dof_pos),
                             self.reindex(self.dof_vel * self.obs_scales.dof_vel),
                             self.reindex(self.action_history_buf[:, -1]),
@@ -2010,11 +2020,29 @@ class LeggedRobot(BaseTask):
     def get_rgb_images(self, env_ids):
         rgb_images = {}
         for camera_name in self.cfg.perception.camera_names:
-            rgb_images[camera_name] = self.camera_sensors[camera_name].get_rgb_images(env_ids).detach().cpu().numpy()[0]
+            rgb_images[camera_name] = self.camera_sensors[camera_name].get_rgb_images(env_ids)
         return rgb_images
 
     def get_depth_images(self, env_ids):
         depth_images = {}
         for camera_name in self.cfg.perception.camera_names:
-            depth_images[camera_name] = self.camera_sensors[camera_name].get_depth_images(env_ids).detach().cpu().numpy()[0]
+            depth_images[camera_name] = self.camera_sensors[camera_name].get_depth_images(env_ids)[0]
         return depth_images
+    
+    def normalize_depth_image(self, depth_image):
+        depth_image = depth_image * -1
+        depth_image = (depth_image - self.cfg.depth.near_clip) / (self.cfg.depth.far_clip - self.cfg.depth.near_clip)  - 0.5
+        return depth_image
+    
+    def process_parkour_depth_image(self, depth_image):
+        # These operations are replicated on the hardware
+        depth_image = self.crop_depth_image(depth_image)
+        depth_image += self.cfg.depth.dis_noise * 2 * (torch.rand(1)-0.5)[0]
+        depth_image = torch.clip(depth_image, -self.cfg.depth.far_clip, -self.cfg.depth.near_clip)
+        depth_image = self.resize_transform(depth_image[None, :]).squeeze()
+        depth_image = self.normalize_depth_image(depth_image)
+        return depth_image
+
+    def crop_depth_image(self, depth_image):
+        # crop 30 pixels from the left and right and and 20 pixels from bottom and return croped image
+        return depth_image[:-2, 4:-4]

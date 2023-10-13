@@ -31,7 +31,7 @@ import gc
 
 gc.collect()
 torch.cuda.empty_cache()
-
+import inspect
 
 def load_policy(logdir):
     body = torch.jit.load(logdir / "checkpoints/body_latest.jit")
@@ -50,10 +50,17 @@ def load_policy(logdir):
 
 def load_parkour_policy(logdir):
 
-    policy_jit = torch.jit.load('navigation/data_and_models/trained_controllers/parkour_depth/checkpoints/051-42-14000-base_jit.pt')
+    policy_jit = torch.jit.load('navigation/data_and_models/trained_controllers/parkour_depth/checkpoints/body_latest.jit', map_location=constants.DEVICE)
+    vision_backbone = torch.jit.load('navigation/data_and_models/trained_controllers/parkour_depth/checkpoints/adaptation_module_latest.jit', map_location=constants.DEVICE)
+    print(vision_backbone.code)
 
-    def policy(obs, depth_latent):
-        return policy_jit(obs, depth_latent)
+    def policy(obs, depth_img):
+        print(obs)
+        proprio = obs['obs'][:, :Cfg.env.n_proprio]
+        depth_latent_and_yaw = vision_backbone(depth_img, proprio)
+        depth_latent  = depth_latent_and_yaw[:, :-2]
+        print(obs['obs'].shape, depth_latent.shape)
+        return policy_jit(obs['obs'], depth_latent)
 
     return policy
 
@@ -128,7 +135,7 @@ def load_env(headless=False):
     Cfg.perception.compute_rgb = True
 
     env = VelocityTrackingEasyEnv(sim_device='cuda:0', headless=False, cfg=Cfg)
-    env = NoYawWrapper(env)
+    env = NoYawWrapper(env, False)
 
     walk_policy = load_policy(constants.WALK_GAIT_PATH)
     climb_policy = load_policy(constants.CLIMB_GAIT_PATH)
@@ -155,27 +162,28 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool):
     using_nn = False
 
     while True:
+        curr_policy = 'parkour'
         env.render()
-        rgb_imgs = env.walk_env.get_rgb_images(env_ids = [0])
-        depth_imgs = env.walk_env.get_depth_images(env_ids = [0])
+        rgb_imgs = env.get_rgb_images(env_ids = [0])
+        depth_imgs = env.get_depth_images(env_ids = [0])
         rgb_img = rgb_imgs['forward']
-        depth_img = depth_imgs['forward']
+        depth_img = env.process_parkour_depth_image(depth_imgs['forward']).unsqueeze(0)
 
         with torch.no_grad():
             if curr_policy == constants.WALK_GAIT_NAME:
-                env.change_current_controller(constants.WALK_GAIT_NAME)
-                env.walk_env.yaw_bool = False
+                # env.change_current_controller(constants.WALK_GAIT_NAME)
+                env.yaw_bool = False
                 actions = walk_policy(obs)
             elif curr_policy == constants.CLIMB_GAIT_NAME:
-                env.change_current_controller(constants.WALK_GAIT_NAME)
-                env.walk_env.yaw_bool = True
+                # env.change_current_controller(constants.WALK_GAIT_NAME)
+                env.yaw_bool = True
                 actions = climb_policy(obs)
             elif curr_policy == constants.DUCK_GAIT_NAME:
-                env.change_current_controller(constants.WALK_GAIT_NAME)
-                env.walk_env.yaw_bool = False
+                # env.change_current_controller(constants.WALK_GAIT_NAME)
+                env.yaw_bool = False
                 actions = walk_policy(obs)
             elif curr_policy == 'parkour':
-                env.change_current_controller('parkour')
+                # env.change_current_controller('parkour')
                 actions = parkour_depth_policy(obs, depth_img)
 
         update_sim_view(env)
@@ -330,3 +338,5 @@ if __name__ == "__main__":
     demo_folder = args.demo_folder
     headless = args.headless
     main(demo_folder, demo_name, headless)
+
+# %%

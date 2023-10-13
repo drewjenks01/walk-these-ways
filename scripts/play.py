@@ -33,7 +33,7 @@ gc.collect()
 torch.cuda.empty_cache()
 
 
-def load_policy(logdir, parkour: bool = False):
+def load_policy(logdir):
     body = torch.jit.load(logdir / "checkpoints/body_latest.jit")
     import os
 
@@ -46,17 +46,15 @@ def load_policy(logdir, parkour: bool = False):
         action = body.forward(torch.cat((obs["obs_history"].to("cpu"), latent), dim=-1))
         info["latent"] = latent
         return action
-    
-    def parkour_policy(obs, depth_img):
-        obs_student = obs[:,:53].clone()[:, 6:8]
-        depth_latent_and_yaw = adaptation_module.forward(depth_img.to("cpu"), obs_student)
-        depth_latent = depth_latent_and_yaw[:,:-2]
-        yaw = depth_latent_and_yaw[:,-2:]
-        action = body.forward(obs.detach(), hist_encoding=True, scandots_latent = depth_latent)
-        return action
+    return policy
 
-    if parkour:
-        return parkour_policy
+def load_parkour_policy(logdir):
+
+    policy_jit = torch.jit.load('navigation/data_and_models/trained_controllers/parkour_depth/checkpoints/051-42-14000-base_jit.pt')
+
+    def policy(obs, depth_latent):
+        return policy_jit(obs, depth_latent)
+
     return policy
 
 
@@ -129,11 +127,12 @@ def load_env(headless=False):
     Cfg.perception.compute_depth = True
     Cfg.perception.compute_rgb = True
 
-    env = MultiGaitWrapper(Cfg)
+    env = VelocityTrackingEasyEnv(sim_device='cuda:0', headless=False, cfg=Cfg)
+    env = NoYawWrapper(env)
 
     walk_policy = load_policy(constants.WALK_GAIT_PATH)
     climb_policy = load_policy(constants.CLIMB_GAIT_PATH)
-    parkour_depth_policy = load_policy(constants.PARKOUR_DEPTH_GAIT_PATH)
+    parkour_depth_policy = load_parkour_policy(constants.PARKOUR_DEPTH_GAIT_PATH)
 
     return env, walk_policy, climb_policy, parkour_depth_policy
 

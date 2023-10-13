@@ -22,56 +22,68 @@ from parkour.utils import task_registry, get_args
 gc.collect()
 torch.cuda.empty_cache()
 
-def load_env():
-    env_cfg, train_cfg = task_registry.get_cfgs(name='a1')
+def load_env(headless=False):
+    load_config_from_policy(constants.WALK_GAIT_PATH)
 
-    env_cfg.env.num_envs = 1
-    env_cfg.env.episode_length_s = 60
-    env_cfg.commands.resampling_time = 60
-    env_cfg.terrain.num_rows = 5
-    env_cfg.terrain.num_cols = 5
-    env_cfg.terrain.height = [0.02, 0.02]
-    env_cfg.terrain.terrain_dict = {"smooth slope": 0., 
-                                    "rough slope up": 0.0,
-                                    "rough slope down": 0.0,
-                                    "rough stairs up": 0., 
-                                    "rough stairs down": 0., 
-                                    "discrete": 0., 
-                                    "stepping stones": 0.0,
-                                    "gaps": 0., 
-                                    "smooth flat": 0,
-                                    "pit": 0.0,
-                                    "wall": 0.0,
-                                    "platform": 0.,
-                                    "large stairs up": 0.,
-                                    "large stairs down": 0.,
-                                    "parkour": 0.2,
-                                    "parkour_hurdle": 0.2,
-                                    "parkour_flat": 0.,
-                                    "parkour_step": 0.2,
-                                    "parkour_gap": 0.2, 
-                                    "demo": 0.2}
-    
-    env_cfg.terrain.terrain_proportions = list(env_cfg.terrain.terrain_dict.values())
-    env_cfg.terrain.curriculum = False
-    env_cfg.terrain.max_difficulty = True
-    
-    env_cfg.depth.angle = [0, 1]
-    env_cfg.noise.add_noise = True
-    env_cfg.domain_rand.randomize_friction = True
-    env_cfg.domain_rand.push_robots = False
-    env_cfg.domain_rand.push_interval_s = 6
-    env_cfg.domain_rand.randomize_base_mass = False
-    env_cfg.domain_rand.randomize_base_com = False
+    # turn off DR for evaluation script
+    Cfg.domain_rand.push_robots = False
+    Cfg.domain_rand.randomize_friction = False
+    Cfg.domain_rand.randomize_gravity = False
+    Cfg.domain_rand.randomize_restitution = False
+    Cfg.domain_rand.randomize_motor_offset = False
+    Cfg.domain_rand.randomize_motor_strength = False
+    Cfg.domain_rand.randomize_friction_indep = False
+    Cfg.domain_rand.randomize_ground_friction = False
+    Cfg.domain_rand.randomize_base_mass = False
+    Cfg.domain_rand.randomize_Kd_factor = False
+    Cfg.domain_rand.randomize_Kp_factor = False
+    Cfg.domain_rand.randomize_joint_friction = False
+    Cfg.domain_rand.randomize_com_displacement = False
 
-    # prepare env
-    depth_latent_buffer = []
-    env, _ = task_registry.make_env(name='a1', env_cfg=env_cfg, args=args)
+    # stair policy
+    Cfg.env.num_observations = 71
+    Cfg.env.num_scalar_observations = 71
+    Cfg.env.observe_yaw = True
 
-    # load policy
-    train_cfg.runner.resume = True
+    Cfg.env.num_recording_envs = 1
+    Cfg.env.num_envs = 1
+    # episode lasts math.ciel(episode_length_s/sim_params.dt), dt=0.01999
+    Cfg.env.episode_length_s = 1000
+    Cfg.init_state.pos = [1.0, 1.0, 0.5]
+    Cfg.terrain.num_rows = 6
+    Cfg.terrain.num_cols = 6
+    Cfg.terrain.border_size = 0
+    Cfg.terrain.center_robots = True
+    Cfg.terrain.center_span = 1
+    Cfg.terrain.teleport_robots = False
+    Cfg.terrain.mesh_type = "trimesh"
 
-    return env, env_cfg, train_cfg
+    Cfg.terrain.generated = True
+    Cfg.terrain.generated_name = "0014"
+    Cfg.terrain.generated_diff = "easy"
+    Cfg.terrain.icra = False
+    Cfg.terrain.maze_terrain = Cfg.terrain.generated
+
+    Cfg.domain_rand.lag_timesteps = 6
+    Cfg.domain_rand.randomize_lag_timesteps = True
+    Cfg.control.control_type = "actuator_net"
+
+    Cfg.perception.image_horizontal_fov = 110
+    Cfg.perception.image_height = 160
+    Cfg.perception.image_width = 220
+    Cfg.perception.camera_names = ["forward", "downward"]
+    Cfg.perception.camera_poses = [[0.3, 0, 0], [0.3, 0, -0.08]]
+    Cfg.perception.camera_rpys = [[0.0, 0, 0], [0, -3.14 / 2, 0]]
+    Cfg.perception.compute_depth = True
+    Cfg.perception.compute_rgb = True
+
+    env = MultiGaitWrapper(Cfg)
+
+    walk_policy = load_policy(constants.WALK_GAIT_PATH)
+    climb_policy = load_policy(constants.CLIMB_GAIT_PATH)
+    parkour_depth_policy = load_policy(constants.PARKOUR_DEPTH_GAIT_PATH)
+
+    return env, walk_policy, climb_policy, parkour_depth_policy
 
 def play_go1(args):
 

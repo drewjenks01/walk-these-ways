@@ -35,7 +35,7 @@ class DemoCollector:
         # initialize data to store during demo
         self.demo_data = utils.get_empty_demo_data()
 
-        self.fps = 3
+        self.fps = constants.FPS
         self.how_often_capture_data = 1/self.fps
         self.timer = 0.0
 

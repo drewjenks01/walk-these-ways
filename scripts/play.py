@@ -21,6 +21,7 @@ from go1_gym.envs.wrappers.multi_gait_wrapper import MultiGaitWrapper
 from navigation.demo.demo_collector import DemoCollector
 from navigation.demo.utils import get_empty_demo_data
 from navigation import constants
+from navigation.vision.models import get_models
 from navigation.vision.utils.image_processing import process_deployed
 from navigation.sim.sim_utils import (
     create_xbox_controller,
@@ -143,7 +144,7 @@ def load_env(headless=False):
 
     return env, walk_policy, climb_policy, parkour_depth_policy
 
-def play_go1(demo_folder: str, demo_name: str, headless: bool):
+def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
     if demo_folder and demo_name:
         make_demo = True
         demo_collector = DemoCollector(demo_folder, demo_name)
@@ -160,13 +161,18 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool):
     curr_policy_params = constants.WALK_GAIT_PARAMS
 
     using_nn = False
+    if model_name:
+        using_nn = True
+        # TODO: update
+        model = get_models.ViNTNavigator(pretrained=True, topomap_folder=None)
+
 
     while True:
         curr_policy = 'parkour'
         env.render()
         rgb_imgs = env.get_rgb_images(env_ids = [0])
         depth_imgs = env.get_depth_images(env_ids = [0])
-        rgb_img = rgb_imgs['forward']
+        rgb_img = np.array(rgb_imgs['forward'])
         depth_img = env.process_parkour_depth_image(depth_imgs['forward']).unsqueeze(0)
 
         with torch.no_grad():
@@ -252,49 +258,11 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool):
             
 
         if using_nn:
-            pass
-            # TODO: implement NN
-
-            # first, _ = render_first_third_imgs(env)
-            # img = process_deployed(first)
-
-            # # check if model memory is filled yet
-            # if model.use_memory and not model.memory_filled:
-            #     # if not, add to memory and get processed command
-
-            #     # add to memory
-            #     model.forward(img)
-
-            # else:
-            #     # if memory is filled, get predicted commands from NN
-            #     commands, policy = model.forward(img)
-            #     commands, policy = model._data_rescale(commands, policy)
-
-            #     x_vel_cmd, y_vel_cmd, yaw_vel_cmd = commands
-
-            #     print(
-            #         "x_vel:",
-            #         round(x_vel_cmd, 2),
-            #         "y_vel:",
-            #         round(y_vel_cmd, 2),
-            #         "yaw:",
-            #         round(yaw_vel_cmd, 2),
-            #         "policy:",
-            #         curr_policy,
-            #     )
-
-            # if policy == 1:
-            #     curr_policy = "stairs"
-            #     env.yaw_bool = True
-            #     step_frequency_cmd = 2.0
-            #     footswing_height_cmd = 0.30
-            # elif policy == 0:
-            #     curr_policy = "walk"
-            #     env.yaw_bool = False
-            #     step_frequency_cmd = 3.0
-            #     footswing_height_cmd = 0.08
-
-        # TODO: scale x_vel if using wtw
+            lin_v, ang_v = model(rgb_img)
+            controls['y_vel'] = lin_v
+            controls['yaw'] = ang_v
+            
+            # TODO: add policy control
 
         if curr_policy != 'parkour':
             env.commands[:, 0] = controls['y_vel']*1.5
@@ -323,20 +291,23 @@ def parse_args():
         action="store_true",
         help="Call if you dont want to render the visualization",
     )
+    parser.add_argument("--model_name", type=str)
 
     args = parser.parse_args()
     return args
 
 
-def main(demo_folder, demo_name, headless):
-    play_go1(demo_folder, demo_name, headless=headless)
+def main(args):
+    play_go1(
+        args.demo_folder, 
+        args.demo_name,
+        args.headless,
+        args.model_name
+        )
 
 
 if __name__ == "__main__":
     args = parse_args()
-    demo_name = args.demo_name
-    demo_folder = args.demo_folder
-    headless = args.headless
-    main(demo_folder, demo_name, headless)
+    main(args)
 
 # %%

@@ -1,4 +1,4 @@
-from navigation.vision.vision_model import VisionModel
+from navigation.vision.models.vision_model import VisionModel
 from navigation import constants
 from navigation.vision.utils.model_utils import get_predicted_class
 from navigation.vision.utils.data_processing_utils import (

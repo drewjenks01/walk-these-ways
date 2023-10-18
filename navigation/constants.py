@@ -1,6 +1,10 @@
 import pathlib
 import torch
 
+# ROBOT
+MAX_V = 1
+MAX_W = 1
+
 # DEMO
 DEMO_BASE_SAVE_DIR = "navigation/data/raw_demos"
 DEMO_BASE_PATH = pathlib.Path(DEMO_BASE_SAVE_DIR)
@@ -24,6 +28,8 @@ CAMERA_FORWARD_RELATIVE_LOC = [0.0 , 0.0, 0.5]
 CAMERA_DOWNWARD_RELATIVE_LOC = []
 CAMERA_HEIGHT_WIDTH = []
 FPS = 9
+IMAGE_ASPECT_RATIO = (4 / 3) 
+CONTEXT_SIZE = 5
 
 # GAITS
 WALK_GAIT_NAME = "walk"

@@ -71,7 +71,6 @@ tmp
 *.urdf
 *.stl
 *.xacro
-*.pth
 *.png
 *.obj
 

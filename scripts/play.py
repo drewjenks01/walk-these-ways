@@ -21,7 +21,7 @@ from go1_gym.envs.wrappers.multi_gait_wrapper import MultiGaitWrapper
 from navigation.demo.demo_collector import DemoCollector
 from navigation.demo.utils import get_empty_demo_data
 from navigation import constants
-from navigation.vision.models import get_models
+from navigation.vision.models.get_models import get_models
 from navigation.vision.utils.image_processing import process_deployed
 from navigation.sim.sim_utils import (
     create_xbox_controller,
@@ -164,7 +164,7 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
     if model_name:
         using_nn = True
         # TODO: update
-        model = get_models.ViNTNavigator(pretrained=True, topomap_folder=None)
+        navigator = get_models(navigator='vint', pretrained=True, topomap_folder=None)
 
 
     while True:
@@ -258,9 +258,9 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
             
 
         if using_nn:
-            lin_v, ang_v = model(rgb_img)
-            controls['y_vel'] = lin_v
-            controls['yaw'] = ang_v
+            outs = navigator(rgb_img)
+            controls['y_vel'] = outs['y_vel']
+            controls['yaw'] = outs['yaw']
             
             # TODO: add policy control
 

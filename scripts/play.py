@@ -145,6 +145,7 @@ def load_env(headless=False):
     return env, walk_policy, climb_policy, parkour_depth_policy
 
 def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
+def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
     if demo_folder and demo_name:
         make_demo = True
         demo_collector = DemoCollector(demo_folder, demo_name)
@@ -172,6 +173,7 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
         env.render()
         rgb_imgs = env.get_rgb_images(env_ids = [0])
         depth_imgs = env.get_depth_images(env_ids = [0])
+        rgb_img = np.array(rgb_imgs['forward'])
         rgb_img = np.array(rgb_imgs['forward'])
         depth_img = env.process_parkour_depth_image(depth_imgs['forward']).unsqueeze(0)
 
@@ -292,6 +294,7 @@ def parse_args():
         help="Call if you dont want to render the visualization",
     )
     parser.add_argument("--model_name", type=str)
+    parser.add_argument("--model_name", type=str)
 
     args = parser.parse_args()
     return args
@@ -304,10 +307,18 @@ def main(args):
         args.headless,
         args.model_name
         )
+def main(args):
+    play_go1(
+        args.demo_folder, 
+        args.demo_name,
+        args.headless,
+        args.model_name
+        )
 
 
 if __name__ == "__main__":
     args = parse_args()
+    main(args)
     main(args)
 
 # %%

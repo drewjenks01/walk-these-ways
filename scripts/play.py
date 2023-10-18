@@ -19,10 +19,9 @@ from go1_gym.envs.wrappers.no_yaw_wrapper import NoYawWrapper
 from go1_gym.envs.wrappers.multi_gait_wrapper import MultiGaitWrapper
 
 from navigation.demo.demo_collector import DemoCollector
-from navigation.demo.utils import get_empty_demo_data
+from navigation.demo.utils import get_empty_demo_command_data, get_empty_demo_image_data
 from navigation import constants
 from navigation.vision.models.get_models import get_models
-from navigation.vision.utils.image_processing import process_deployed
 from navigation.sim.sim_utils import (
     create_xbox_controller,
     update_sim_view,
@@ -140,11 +139,9 @@ def load_env(headless=False):
 
     walk_policy = load_policy(constants.WALK_GAIT_PATH)
     climb_policy = load_policy(constants.CLIMB_GAIT_PATH)
-    parkour_depth_policy = load_parkour_policy(constants.PARKOUR_DEPTH_GAIT_PATH)
 
-    return env, walk_policy, climb_policy, parkour_depth_policy
+    return env, walk_policy, climb_policy
 
-def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
 def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
     if demo_folder and demo_name:
         make_demo = True
@@ -153,7 +150,7 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
         make_demo = False
         logging.warning('No demo folder or name provided. Demo collection will not work.')
 
-    env, walk_policy, climb_policy, parkour_depth_policy = load_env(headless=headless)
+    env, walk_policy, climb_policy = load_env(headless=headless)
 
     obs = env.reset()
     joy = create_xbox_controller()
@@ -169,13 +166,11 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
 
 
     while True:
-        curr_policy = 'parkour'
         env.render()
         rgb_imgs = env.get_rgb_images(env_ids = [0])
         depth_imgs = env.get_depth_images(env_ids = [0])
         rgb_img = np.array(rgb_imgs['forward'])
-        rgb_img = np.array(rgb_imgs['forward'])
-        depth_img = env.process_parkour_depth_image(depth_imgs['forward']).unsqueeze(0)
+        depth_img = depth_imgs['forward']
 
         with torch.no_grad():
             if curr_policy == constants.WALK_GAIT_NAME:
@@ -190,9 +185,7 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
                 # env.change_current_controller(constants.WALK_GAIT_NAME)
                 env.yaw_bool = False
                 actions = walk_policy(obs)
-            elif curr_policy == 'parkour':
-                # env.change_current_controller('parkour')
-                actions = parkour_depth_policy(obs, depth_img)
+
 
         update_sim_view(env)
         #update_viewer_cam(env)
@@ -208,9 +201,7 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
         elif controls['down_dpad']:
             curr_policy = constants.DUCK_GAIT_NAME
             curr_policy_params = constants.DUCK_GAIT_PARAMS
-        elif controls['l_dpad']:
-            curr_policy = 'parkour'
-            curr_policy_params = constants.DUCK_GAIT_PARAMS
+
 
 
         # climb policy is not trained to go backward
@@ -252,11 +243,16 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
 
         if make_demo and demo_collector.currently_collecting and time.time() - demo_collector.timer >= demo_collector.how_often_capture_data :
 
-            frame_data = get_empty_demo_data()
-            frame_data["Commands"]= [controls['y_vel'],controls['yaw'],curr_policy_params['gait']]
-            frame_data["forward_rgb"]= rgb_img
-            frame_data['forward_depth'] = depth_img
-            demo_collector.add_data_to_partial_run(frame_data)
+            command_data = get_empty_demo_command_data()
+            command_data['y_vel'] = controls['y_vel']
+            command_data['yaw'] = controls['yaw']
+            command_data['gait'] = curr_policy_params['gait']
+
+            image_data = get_empty_demo_image_data()
+            image_data[constants.FORWARD_RGB_CAMERA] = rgb_img
+            image_data[constants.FORWARD_DEPTH_CAMERA] = depth_img
+            
+            demo_collector.add_data_to_run(command_data, image_data)
             
 
         if using_nn:
@@ -293,7 +289,6 @@ def parse_args():
         action="store_true",
         help="Call if you dont want to render the visualization",
     )
-    parser.add_argument("--model_name", type=str)
     parser.add_argument("--model_name", type=str)
 
     args = parser.parse_args()

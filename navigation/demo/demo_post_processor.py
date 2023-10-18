@@ -1,6 +1,6 @@
 from navigation import constants
 from navigation.demo import utils
-from navigation.vision.vision_model import VisionModel
+from navigation.vision.models.vision_model import VisionModel
 
 import os
 import pickle as pkl

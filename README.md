@@ -16,8 +16,9 @@
     2. [Deploying a Custom Model](#configuration)
     4. [Deployment and Logging](#deployment)
     5. [Analyzing Real-world Performance](#plotting)
+5. [Debugging Common Errors](#debugging)
 
-## Overview <a name="introduction"></a>
+## Overview <a name="overview"></a>
 
 This repository provides an implementation of the paper:
 
@@ -32,10 +33,22 @@ This repository provides an implementation of the paper:
       <em>Conference on Robot Learning</em>, 2022
       <br>
       <a href="https://openreview.net/pdf?id=52c5e73SlS2">paper</a> /
-      <a href="">bibtex</a> /
       <a href="https://gmargo11.github.io/walk-these-ways/" target="_blank">project page</a>
     <br>
 </td>
+
+<br>
+
+If you use this repository in your work, consider citing:
+
+```
+@article{margolis2022walktheseways,
+    title={Walk These Ways: Tuning Robot Control for Generalization with Multiplicity of Behavior},
+    author={Margolis, Gabriel B and Agrawal, Pulkit},
+    journal={Conference on Robot Learning},
+    year={2022}
+}
+```
 
 <br>
 
@@ -120,7 +133,7 @@ scripts
 
 You can run the `test.py` script to verify your environment setup. If it runs then you have installed the gym
 environments correctly. To train an agent, run `train.py`. To evaluate a pretrained agent, run `play.py`. We provie a
-pretrained agent checkpoint in the [./runs/pretrain-v0](runs/pretrain-v0) directory.
+pretrained agent checkpoint in the [./runs/pretrain-v0](runs/gait-conditioned-agility/pretrain-v0) directory.
 
 
 
@@ -153,7 +166,7 @@ Username: `runs`
 API: [server IP] (defaults to `localhost:8081`)
 Access Token: [blank]
 
-Now, clicking on the profile should yield a 
+Now, clicking on the profile should yield a dashboard interface visualizing the training runs.
 
 ### Analyzing the Policy <a name="analysis"></a>
 
@@ -201,8 +214,9 @@ ssh unitree@192.168.123.15
 Now, run the following commands on the robot's onboard computer:
 
 ```
-cd ~/go1_gym/go1_gym_deploy/installer
-./install_deployment_code.sh
+chmod +x installer/install_deployment_code.sh
+cd ~/go1_gym/go1_gym_deploy/scripts
+sudo ../installer/install_deployment_code.sh
 ```
 
 The installer will automatically unzip and install the docker image containing the deployment environment. 
@@ -210,7 +224,7 @@ The installer will automatically unzip and install the docker image containing t
 
 ### Running the Controller  <a name="runcontroller"></a>
 
-Place the robot into damping mode. The control sequence is: [L1+B], [L1+A], [L1+L2+START]. After this, the robot should sit on the ground and the joints should move freely. 
+Place the robot into damping mode. The control sequence is: [L2+A], [L2+B], [L1+L2+START]. After this, the robot should sit on the ground and the joints should move freely. 
 
 Now, ssh to `unitree@192.168.123.15` and run the following two commands to start the controller. <b>This will operate the robot in low-level control mode. Make sure your Go1 is hung up.</b>
 
@@ -232,8 +246,23 @@ The robot will wait for you to press [R2], then calibrate, then wait for a secon
 ![RC Mapping](media/rc_map.png?raw=true)
 The RC mapping is depicted above. 
 ### Deploying a Custom Model  <a name="configuration"></a>
-<i>Coming soon</i>
+
+After training a custom model, it will be saved in the `runs` folder (https://github.com/Improbable-AI/walk-these-ways/tree/master/runs/). Note the relative location of your custom model of the `train` folder (for the default policy), it's `gait-conditioned-agility/pretrain-v0/train`. We'll denote this as `$PDIR`.
+
+To play the custom model in simulation first, replace the line https://github.com/Improbable-AI/walk-these-ways/blob/master/scripts/play.py#L97 with `label = "$PDIR"`.
+
+To deploy on the robot, replace the line https://github.com/Improbable-AI/walk-these-ways/blob/master/go1_gym_deploy/scripts/deploy_policy.py#L73 with `label = "$PDIR"`. Then re-run the `send_to_unitree.sh` script to update the files on the robot.
+
 ### Logging and Debugging <a name="deployment"></a>
 <i>Coming soon</i>
 ### Analyzing Real-world Performance <a name="plotting"></a>
 <i>Coming soon</i>
+
+
+## Debugging Common Errors  <a name="rcconfig"></a>
+
+| Bug      | Solution | First report |
+| ----------- | ----------- | ---------- |
+| Out of disk space     | If you run out of disk space during `cd ~/go1_gym/go1_gym_deploy/installer && ./install_deployment_code.sh` consider changing the script to use `192.168.123.13` instead (at least in my Go1 Edu with 3 Jetson nano, I only had the required disk space to copy the tar and extract the image in only `192.168.123.13`). Alternatively, consider deploying on an external PC.       | https://github.com/Improbable-AI/walk-these-ways/issues/7 |
+| `lcm_position` syntax error  | When deploying with `sudo ./start_unitree_sdk.sh` on an external PC/NUC, if you get the following error: `./lcm_position: 1: Syntax error: word unexpected (expecting ")")`, It is likely because the ./lcm_position has been compiled for ARM aarch64 (to run on the jetson), please recompile it for your architecture(external PC/ NUC) using https://github.com/Improbable-AI/unitree_legged_sdk.        | https://github.com/Improbable-AI/walk-these-ways/issues/7 |
+

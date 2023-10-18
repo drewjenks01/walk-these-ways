@@ -1,7 +1,7 @@
 from navigation import constants
 from navigation.demo import utils
 from navigation.vision.utils.image_processing import process_image
-from navigation.vision.vision_model import VisionModel
+from navigation.vision.models.vision_model import VisionModel
 
 import os
 import logging

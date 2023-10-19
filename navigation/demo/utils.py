@@ -20,6 +20,6 @@ def get_empty_demo_image_data() -> None:
 
     # add command key
     for key in constants.CAMERA_IMAGE_NAMES:
-        demo_data[key] = []
+        demo_data[key] = None
         
     return demo_data

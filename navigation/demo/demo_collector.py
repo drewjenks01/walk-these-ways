@@ -6,6 +6,7 @@ import os
 import pickle as pkl
 import shutil
 import time
+import matplotlib.pyplot as plt
 
 
 class DemoCollector:
@@ -22,9 +23,6 @@ class DemoCollector:
 
         # create the demo run folder
         self.save_path = self.save_path_base / utils.make_run_label(self.run_count)
-        
-        # create demo folders
-        self.create_demo_folders()
         
 
         # define inital partial run file
@@ -51,12 +49,19 @@ class DemoCollector:
 
     def start_collecting(self):
         self.currently_collecting = True
-        self.timer = time.time()
+        self.create_demo_folders()
+        self._reset_timer()
+
+    def _reset_timer(self):
+        self.timer= time.time()
 
     @staticmethod
-    def save_data_to_file(data, filepath):
+    def save_commands_to_file(data, filepath):
         with filepath.open(mode="wb") as file:
                 pkl.dump(data, file)
+
+    def save_image_to_file(data, filepath):
+        plt.imsave(filepath, data)
 
 
     def add_data_to_run(self, command_data: dict, image_data: dict):
@@ -64,23 +69,26 @@ class DemoCollector:
 
         # save rgb and depth image (if exists)
         for camera_image_name in constants.CAMERA_IMAGE_NAMES:
-            if image_data[camera_image_name]:
-                DemoCollector.save_data_to_file(
-                    img=image_data[camera_image_name],
+            if image_data[camera_image_name] is not None:
+                DemoCollector.save_image_to_file(
+                    data=image_data[camera_image_name],
                     filepath=self.save_path / camera_image_name / f'{self.run_image_count}.jpg'
                 )
         # increment image count -- assumes theres always at least 1 image
         self.run_image_count += 1
 
+        if self.run_image_count % 50 == 0:
+            logging.info(f'{self.run_image_count} images saved.')
+
         # add command data to running list
         for command_key in command_data:
             self.demo_command_data[command_key].append(command_data[command_key])
 
-        self.start_collecting() # reset timer
+        self._reset_timer() # reset timer
 
     def end_and_save_demo(self):
         # save the command data to file
-        DemoCollector.save_data_to_file(
+        DemoCollector.save_commands_to_file(
             data=self.demo_command_data,
             filepath=self.save_path / 'command_data.pkl'
             )
@@ -103,8 +111,6 @@ class DemoCollector:
             self.run_count+=1
             self.save_path = self.save_path.parent / utils.make_run_label(self.run_count) 
 
-        # create demo folders
-        self.create_demo_folders()
 
         # reset command data
         self.demo_command_data = utils.get_empty_demo_command_data()

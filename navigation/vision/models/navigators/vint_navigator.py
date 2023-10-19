@@ -24,7 +24,7 @@ class ViNTNavigator(BaseModel):
     
     def __init__(self, pretrained: bool, topomap_folder:str):
         if pretrained:
-            self.model = torch.load(ViNTNavigator.MODEL_WEIGHTS, device=constants.DEVICE)
+            self.model = torch.load(ViNTNavigator.MODEL_WEIGHTS, map_location=constants.DEVICE)
             self.model.to(constants.DEVICE)
             self.model.eval()
         else:

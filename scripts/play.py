@@ -161,15 +161,14 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
     using_nn = False
     if model_name:
         using_nn = True
-        # TODO: update
-        navigator = get_models(navigator='vint', pretrained=True, topomap_folder=None)
+        navigator = get_models(navigator='vint', pretrained=True, topomap_folder='navigation/data/vint_topomaps/sim_maze')
 
 
     while True:
         env.render()
         rgb_imgs = env.get_rgb_images(env_ids = [0])
         depth_imgs = env.get_depth_images(env_ids = [0])
-        rgb_img = np.array(rgb_imgs['forward'])
+        rgb_img = rgb_imgs['forward']
         depth_img = depth_imgs['forward']
 
         with torch.no_grad():
@@ -214,30 +213,27 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
             logging.info("Resetting demo")
             env.reset()
             if make_demo:
-                demo_collector.hard_reset()
+                demo_collector.reset_demo(reset_current=True)
 
         # read and update demo collect bool
         if controls['y_but'] != 0 and make_demo:
             if demo_collector.currently_collecting:
                 logging.info('Saving demo')
-                demo_collector.end_and_save_full_demo()
+                demo_collector.end_and_save_demo()
             else:
                 logging.info("Starting log.")
                 logging.info(f'Logging to: {demo_collector.save_path}')
                 demo_collector.start_collecting()
 
         # update NN control
-        if make_demo and controls['l_trig'] != 0 and demo_collector.using_NN:
+        if make_demo and controls['l_trig'] != 0 and using_nn:
             logging.info("NN policy: off")
-            demo_collector.using_NN = False
+            using_nn = False
 
-        if controls['r_trig'] != 0 and make_demo:
-            if demo_collector.NN_ready:
-                logging.info('NN policy: on')
-                demo_collector.using_NN = True
-                # TODO: turn nn on
-            else:
-                logging.info('NN not ready to be used')
+        if controls['r_trig'] != 0 and not using_nn:
+            using_nn = True
+            logging.info('NN policy: on')
+
 
         # collect commands every timestep -> will be averages
 
@@ -249,8 +245,8 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
             command_data['gait'] = curr_policy_params['gait']
 
             image_data = get_empty_demo_image_data()
-            image_data[constants.FORWARD_RGB_CAMERA] = rgb_img
-            image_data[constants.FORWARD_DEPTH_CAMERA] = depth_img
+            image_data[constants.FORWARD_RGB_CAMERA] = rgb_img.squeeze(0).detach().cpu().numpy().astype(np.uint8)
+            image_data[constants.FORWARD_DEPTH_CAMERA] = depth_img.squeeze(0).detach().cpu().numpy().astype(np.uint8)
             
             demo_collector.add_data_to_run(command_data, image_data)
             

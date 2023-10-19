@@ -3,8 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import List, Dict, Optional, Tuple
 from efficientnet_pytorch import EfficientNet
-from navigation.vision.models.vint.base_model import BaseModel
-from navigation.vision.models.vint.self_attention import MultiLayerDecoder
+from navigation.vision.models.navigators.vint.base_model import BaseModel
+from navigation.vision.models.navigators.vint.self_attention import MultiLayerDecoder
 
 class ViNT(BaseModel):
     def __init__(

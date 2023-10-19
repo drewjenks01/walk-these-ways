@@ -73,5 +73,7 @@ tmp
 *.xacro
 *.png
 *.obj
+*.jpg
+*.pth
 
 # exceptions

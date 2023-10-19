@@ -43,6 +43,16 @@ class DemoPostProcessor:
         self.demo_data = utils.get_empty_demo_data()
         self._load_all_run_data()
 
+    
+    def make_vint_topomap(self):
+        vint_topomap_dir = constants.DEMO_BASE_PATH.parent / 'vint_topomaps' / self.demo_folder / self.demo_name / utils.make_run_label(self.run_number)
+        if not vint_topomap_dir.exists():
+            vint_topomap_dir.mkdir()
+        
+        rgb_images = self.demo_data[constants.FORWARD_RGB_CAMERA]
+        depth_images = self.demo_data[constants.FORWARD_DEPTH_CAMERA]
+        commands = self.demo_data[constants.RGB]
+
         
 
     def get_dino_attention(image):

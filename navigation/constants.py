@@ -1,23 +1,37 @@
 import pathlib
 import torch
 
+# PATHS
+NAVIGATION_PATH = pathlib.Path('navigation')
+MODELS_PATH = NAVIGATION_PATH / 'models'
+DATA_PATH = NAVIGATION_PATH / 'data'
+DEMO_PATH = NAVIGATION_PATH / 'demo'
+
+RAW_DEMOS_PATH = DATA_PATH / 'raw_demos'
+DEMO_TOPOMAPS_PATH = DATA_PATH / 'vint_topomaps'
+
+TRAINED_VISION_MODEL_PATH = MODELS_PATH / 'trained_models'
+TRAINED_CONTROLLERS_PATH = MODELS_PATH / 'trained_controllers'
+
+CLIMB_GAIT_PATH = TRAINED_CONTROLLERS_PATH / 'climb'
+WALK_GAIT_PATH = TRAINED_CONTROLLERS_PATH / 'walk'
+PARKOUR_DEPTH_GAIT_PATH =TRAINED_CONTROLLERS_PATH / 'parkour_depth'
+
+
 # ROBOT
 MAX_V = 1
 MAX_W = 1
 
 # DEMO
-DEMO_BASE_SAVE_DIR = "navigation/data/raw_demos"
-DEMO_BASE_PATH = pathlib.Path(DEMO_BASE_SAVE_DIR)
 DEMO_RUN_LABEL = "run"
 DEMO_PARTIAL_RUN_LABEL = "log"
 
 # VISION
 NUM_CAMERAS = 3
 NUM_GAITS = 3
-COMMAND_NAMES = ["y", "yaw", "gait"]
+COMMAND_NAMES = ["y_vel", "yaw", "gait"]
 COMMAND_KEY = "Commands"
 NUM_COMMANDS = len(COMMAND_NAMES)
-TRAINED_VISION_MODEL_PATH = pathlib.Path("navigation/data/trained_vision_models")
 
 FORWARD_RGB_CAMERA = 'forward_rgb'
 FORWARD_DEPTH_CAMERA = 'forward_depth'
@@ -66,9 +80,6 @@ DUCK_GAIT_PARAMS = {
     'yaw_obs_bool': 0
 }
 GAIT_NAMES = [WALK_GAIT_NAME, CLIMB_GAIT_NAME, DUCK_GAIT_NAME]
-CLIMB_GAIT_PATH = pathlib.Path("navigation/data_and_models/trained_controllers/climb")
-WALK_GAIT_PATH = pathlib.Path("navigation/data_and_models/trained_controllers/walk")
-PARKOUR_DEPTH_GAIT_PATH = pathlib.Path("navigation/data_and_models/trained_controllers/parkour_depth")
 
 # MISC
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")

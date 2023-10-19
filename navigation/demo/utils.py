@@ -6,14 +6,20 @@ def make_run_label(run_count: int) -> str:
 def make_partial_run_label(partial_run_count: int) -> str:
     return constants.DEMO_PARTIAL_RUN_LABEL+str(partial_run_count)+'.pkl'
 
-def get_empty_demo_data() -> None:
+def get_empty_demo_command_data() -> None:
     demo_data = {}
 
     # add command key
-    demo_data[constants.COMMAND_KEY] = []
+    for key in constants.COMMAND_NAMES:
+        demo_data[key] = []
+        
+    return demo_data
 
-    # add image keys
-    for cam_name in constants.CAMERA_IMAGE_NAMES:
-        demo_data[cam_name] = []
+def get_empty_demo_image_data() -> None:
+    demo_data = {}
+
+    # add command key
+    for key in constants.CAMERA_IMAGE_NAMES:
+        demo_data[key] = []
         
     return demo_data

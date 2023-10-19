@@ -13,7 +13,7 @@ class DemoCollector:
         self.demo_name = demo_name
 
         # determine demo folder, create if doesnt exists
-        self.save_path_base = constants.DEMO_BASE_PATH / demo_folder / self.demo_name
+        self.save_path_base = constants.RAW_DEMOS_PATH / demo_folder / self.demo_name
         if not self.save_path_base.exists():
             self.run_count = 1
             self.save_path_base.mkdir(parents=True)
@@ -22,18 +22,16 @@ class DemoCollector:
 
         # create the demo run folder
         self.save_path = self.save_path_base / utils.make_run_label(self.run_count)
-        self.save_path.mkdir()
+        
+        # create demo folders
+        self.create_demo_folders()
+        
 
         # define inital partial run file
-        self.partial_run_count = 1
-        self.save_path = self.save_path / utils.make_partial_run_label(
-            self.partial_run_count
-        )
-        self.timestep_to_save_partial = 20
-        self.partial_demo_timestep = 0
+        self.run_image_count = 0
 
         # initialize data to store during demo
-        self.demo_data = utils.get_empty_demo_data()
+        self.demo_command_data = utils.get_empty_demo_command_data()
 
         self.fps = constants.FPS
         self.how_often_capture_data = 1/self.fps
@@ -41,83 +39,74 @@ class DemoCollector:
 
         self.currently_collecting = False
 
+    def create_demo_folders(self):
+        # create run folder
+        if not self.save_path.exists():
+            self.save_path.mkdir()
+
+        # create image folders
+        for img_suffix in constants.CAMERA_IMAGE_NAMES:
+            if not (self.save_path / img_suffix).exists():
+                (self.save_path / img_suffix).mkdir()
+
     def start_collecting(self):
         self.currently_collecting = True
         self.timer = time.time()
 
-    def add_data_to_partial_run(self, data: dict) -> None:
-        assert self.currently_collecting, 'Make sure to call start_collecting()'
-        assert data.keys() == self.get_current_demo_data().keys(), f'{data.keys()} != {self.get_current_demo_data().keys()} '
-        for key, val in data.items():
-            self.demo_data[key].append(val)
-        
-        self.partial_demo_timestep += 1
+    @staticmethod
+    def save_data_to_file(data, filepath):
+        with filepath.open(mode="wb") as file:
+                pkl.dump(data, file)
 
-        if self.partial_demo_timestep % self.timestep_to_save_partial == 0:
-            self.save_partial_demo()
-        
+
+    def add_data_to_run(self, command_data: dict, image_data: dict):
+        assert self.currently_collecting, 'Make sure to call start_collecting()'
+
+        # save rgb and depth image (if exists)
+        for camera_image_name in constants.CAMERA_IMAGE_NAMES:
+            if image_data[camera_image_name]:
+                DemoCollector.save_data_to_file(
+                    img=image_data[camera_image_name],
+                    filepath=self.save_path / camera_image_name / f'{self.run_image_count}.jpg'
+                )
+        # increment image count -- assumes theres always at least 1 image
+        self.run_image_count += 1
+
+        # add command data to running list
+        for command_key in command_data:
+            self.demo_command_data[command_key].append(command_data[command_key])
+
         self.start_collecting() # reset timer
 
-    def save_partial_demo(self) -> None:
-        self._reset_demo(partial_save=True)
+    def end_and_save_demo(self):
+        # save the command data to file
+        DemoCollector.save_data_to_file(
+            data=self.demo_command_data,
+            filepath=self.save_path / 'command_data.pkl'
+            )
 
-    def end_and_save_full_demo(self) -> None:
-        # save current demo
-        self._reset_demo(partial_save=True, soft_reset=True)
+        # reset demo and prepare for the next
+        self.reset_demo()
 
-    def get_current_demo_data(self) -> dict:
-        return self.demo_data
+    def reset_demo(self, reset_current=False):
+        logging.info('Resetting demo')
 
-    def hard_reset(self):
-        self._reset_demo(hard_reset=True)
+        # turn collecting off
+        self.currently_collecting = False
+        
+        # delete any data saved so far and dont change save path
+        if reset_current:
+            logging.info('Deleting current demo')
+            shutil.rmtree(self.save_path)
 
-    def _reset_demo(
-        self,
-        partial_save: bool = False,
-        soft_reset: bool = False,
-        hard_reset: bool = False,
-    ) -> None:
-        assert (
-            partial_save or hard_reset or soft_reset
-        ), "One of the inputs must be true."
+        else:
+            self.run_count+=1
+            self.save_path = self.save_path.parent / utils.make_run_label(self.run_count) 
 
-        if partial_save:
-            # store the current demo data as a partial run
-            if not self.save_path.parent.exists():
-                self.save_path.parent.mkdir()
-            logging.info(f"Storing partial demo of length={len(self.demo_data[constants.COMMAND_KEY])} to {self.save_path}")
-            with self.save_path.open(mode="wb") as file:
-                pkl.dump(self.demo_data, file)
+        # create demo folders
+        self.create_demo_folders()
 
-            self.demo_data = utils.get_empty_demo_data()
+        # reset command data
+        self.demo_command_data = utils.get_empty_demo_command_data()
 
-            # update demo file name
-            self.partial_run_count += 1
-
-        if hard_reset or soft_reset:
-            if hard_reset:
-                # delete current run folder
-                self._delete_partial_saves()
-            else:
-                self.run_count+=1
-
-            # reset demo data
-            self.demo_data = utils.get_empty_demo_data()
-
-            # reset partial run label
-            self.partial_run_count = 1
-
-            self.currently_collecting=False
-
-        self.save_path = self.save_path_base / utils.make_run_label(self.run_count) / utils.make_partial_run_label(
-            self.partial_run_count
-        )
-        self.partial_demo_timestep = 0
-
-    def _delete_partial_saves(self):
-        # delete current run folder
-        logging.info(f'Deleting {self.save_path.parent}')
-        shutil.rmtree(self.save_path.parent)
-
-        # re-create run folder
-        self.save_path.parent.mkdir()
+        logging.info(f'Current demo folder: {self.save_path}')

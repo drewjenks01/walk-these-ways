@@ -1,12 +1,12 @@
 # License: see [LICENSE, LICENSES/legged_gym/LICENSE]
 
+import numpy as np
 from params_proto import PrefixProto, ParamsProto
 
 
 class Cfg(PrefixProto, cli=False):
     class env(PrefixProto, cli=False):
-        num_envs = 1000
-        n_proprio = 53
+        num_envs = 4096
         num_observations = 235
         num_scalar_observations = 42
         # if not None a privilige_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
@@ -14,6 +14,7 @@ class Cfg(PrefixProto, cli=False):
         privileged_future_horizon = 1
         num_actions = 12
         num_observation_history = 15
+        history_frame_skip = 1
         env_spacing = 3.  # not used with heightfields/trimeshes
         send_timeouts = True  # send time out information to the algorithm
         episode_length_s = 20  # episode length in seconds
@@ -21,6 +22,7 @@ class Cfg(PrefixProto, cli=False):
         observe_only_ang_vel = False
         observe_only_lin_vel = False
         observe_yaw = False
+        offset_yaw_obs = False
         observe_contact_states = False
         observe_command = True
         observe_height_command = False
@@ -29,86 +31,111 @@ class Cfg(PrefixProto, cli=False):
         observe_clock_inputs = False
         observe_two_prev_actions = False
         observe_imu = False
+        observe_ball_pos = False
         record_video = True
         recording_width_px = 360
         recording_height_px = 240
         recording_mode = "COLOR"
         num_recording_envs = 1
         debug_viz = False
+
         all_agents_share = False
+        add_objects = False
+        random_mask_input = False
 
-        priv_observe_friction = True
-        priv_observe_friction_indep = True
-        priv_observe_ground_friction = False
-        priv_observe_ground_friction_per_foot = False
-        priv_observe_restitution = True
-        priv_observe_base_mass = True
-        priv_observe_com_displacement = True
-        priv_observe_motor_strength = False
-        priv_observe_motor_offset = False
-        priv_observe_joint_friction = True
-        priv_observe_Kp_factor = True
-        priv_observe_Kd_factor = True
-        priv_observe_contact_forces = False
-        priv_observe_contact_states = False
-        priv_observe_body_velocity = False
-        priv_observe_foot_height = False
-        priv_observe_body_height = False
-        priv_observe_gravity = False
-        priv_observe_terrain_type = False
-        priv_observe_clock_inputs = False
-        priv_observe_doubletime_clock_inputs = False
-        priv_observe_halftime_clock_inputs = False
-        priv_observe_desired_contact_states = False
-        priv_observe_dummy_variable = False
+        save_torques = False
+        save_velocities = False
 
-    class parkour(PrefixProto, cli=False):
-        using_controller = False
+        # priv_observe_friction = True
+        # priv_observe_friction_indep = True
+        # priv_observe_ground_friction = False
+        # priv_observe_ground_friction_per_foot = False
+        # priv_observe_restitution = True
+        # priv_observe_ground_restitution = False
+        # priv_observe_ground_roughness = False
+        # priv_observe_stair_height = False
+        # priv_observe_stair_run = False
+        # priv_observe_stair_ori = False
+        # priv_observe_base_mass = True
+        # priv_observe_com_displacement = True
+        # priv_observe_motor_strength = False
+        # priv_observe_motor_offset = False
+        # priv_observe_joint_friction = True
+        # priv_observe_Kp_factor = True
+        # priv_observe_Kd_factor = True
+        # priv_observe_contact_forces = False
+        # priv_observe_contact_states = False
+        # priv_observe_body_velocity = False
+        # priv_observe_ball_velocity = False
+        # priv_observe_foot_height = False
+        # priv_observe_body_height = False
+        # priv_observe_gravity = False
+        # priv_observe_ball_drag = False
+        # priv_observe_terrain_type = False
+        # priv_observe_clock_inputs = False
+        # priv_observe_doubletime_clock_inputs = False
+        # priv_observe_halftime_clock_inputs = False
+        # priv_observe_desired_contact_states = False
+        # priv_observe_motion = False
+        # priv_observe_dummy_variable = False
 
-    class depth:
-        use_camera = False
-        camera_num_envs = 192
-        camera_terrain_num_rows = 10
-        camera_terrain_num_cols = 20
+    class robot(PrefixProto, cli=False):
+        name = "go1"
 
-        position = [0.27, 0, 0.03]  # front camera
-        angle = [-5, 5]  # positive pitch down
-
-        update_interval = 5  # 5 works without retraining, 8 worse
-
-        original = (106, 60)
-        resized = (87, 58)
-        horizontal_fov = 87
-        buffer_len = 2
+    class object(PrefixProto, cli=False):
+        asset = "ball"
+        mass = 0.318
+        radius = 0.0889
+        ball_init_pos = [0.0, 0.0, 0.50]
+        ball_init_rot = [0, 0, 0, 1]
+        ball_init_lin_vel = [0, 0, 0]
+        ball_init_ang_vel = [0, 0, 0]
+        init_pos_range = [1.0, 1.0, 0.2]
+        init_vel_range = [0.5, 0.5, 0.3]
+        pos_reset_prob = 0.0002
+        vel_reset_prob = 0.0008
+        pos_reset_range = [1.0, 1.0, 0.0]
+        vel_reset_range = [0.3, 0.3, 0.3]
+        vision_receive_prob = 0.7
         
-        near_clip = 0
-        far_clip = 2
-        dis_noise = 0.0
+
+    class sensors(PrefixProto, cli=False):
+        sensor_names = ["OrientationSensor",
+                        "RCSensor",
+                        "JointPositionSensor",
+                        "JointVelocitySensor",
+                        "ActionSensor",
+                        "ActionSensor",
+                        "ClockSensor",
+                        ]
+        sensor_args = {"OrientationSensor": {},
+                       "RCSensor": {},
+                        "JointPositionSensor": {},
+                        "JointVelocitySensor": {},
+                        "ActionSensor": {},
+                        "ActionSensor": {"delay": 1},
+                        "ClockSensor": {}}
         
-        scale = 1
-        invert = True
-    
+        privileged_sensor_names = []
+        privileged_sensor_args = {}
+        
+
     class terrain(PrefixProto, cli=False):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
-        maze_terrain= False
         horizontal_scale = 0.1  # [m]
         vertical_scale = 0.005  # [m]
         border_size = 0  # 25 # [m]
-        curriculum = False
-        generated = False # to use the generate terrains
-        generated_name = ''
-        generated_diff=''
-        icra = False
+        curriculum = True
         static_friction = 1.0
         dynamic_friction = 1.0
         restitution = 0.0
         terrain_noise_magnitude = 0.1
         # rough terrain only:
         terrain_smoothness = 0.005
-        measure_heights = True
+        # measure_heights = True
         # 1mx1.6m rectangle (without center line)
-        measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
-        measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
+        # measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+        # measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
         selected = False  # select a unique terrain type and pass all arguments
         terrain_kwargs = None  # Dict of arguments for selected terrain
         min_init_terrain_level = 0
@@ -117,10 +144,11 @@ class Cfg(PrefixProto, cli=False):
         terrain_width = 8.
         num_rows = 10  # number of terrain rows (levels)
         num_cols = 20  # number of terrain cols (types)
+        num_border_boxes = 0
         # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
         terrain_proportions = [0.1, 0.1, 0.35, 0.25, 0.2]
         # trimesh only:
-        slope_treshold = 0.75  # slopes above this threshold will be corrected to vertical surfaces
+        slope_treshold = 1.5  # slopes above this threshold will be corrected to vertical surfaces
         difficulty_scale = 1.
         x_init_range = 1.
         y_init_range = 1.
@@ -130,11 +158,73 @@ class Cfg(PrefixProto, cli=False):
         teleport_robots = True
         teleport_thresh = 2.0
         max_platform_height = 0.2
+        min_step_height = 0.0
+        max_step_height = 0.26
+        num_steps = 8
+        min_step_run = 0.25
+        max_step_run = 0.4
         center_robots = False
-        #corner_robots=True # spawn robot at corner
         center_span = 5
+        platform_size = 1.0
+        perlin_octaves = 1
+        perlin_lacunarity = 1
+        perlin_gain = 1
 
     class commands(PrefixProto, cli=False):
+
+        ############################
+        # Inverse IK: door opening #
+        ############################
+        control_only_z1 = False 
+        inverse_IK_door_opening = False      # Specify which commands to define in leggedrobot.py/_init_command_distribution 
+        teleop_occulus = False
+        interpolate_ee_cmds = False
+        only_test_loco = False
+        sample_feasible_commands = False
+
+        # end_effector_pos_x   = [-0.8, 0.8]   # min/max [m] in base frame 
+        # end_effector_pos_y   = [-0.8, 0.8]   # min/max [m] in base frame 
+        # end_effector_pos_z   = [0.2, 1.0]    # min/max [m] in base frame 
+        # end_effector_roll    = [-0.5, 0.5]   # min/max [rad] in base frame (0.5 rad = 30 degrees)
+        # end_effector_pitch   = [-0.5, 0.5]   # min/max [rad] in base frame 
+        # end_effector_yaw     = [-0.5, 0.5]   # min/max [rad] in base frame 
+        # end_effector_gripper = [-0.17, 0.17] # min/max [rad] (0.17 rad = 10 degrees)
+        # # Limit 
+        # limit_end_effector_pos_x   = [-0.8, 0.8]   # min/max [m] in base frame 
+        # limit_end_effector_pos_y   = [-0.8, 0.8]   # min/max [m] in base frame 
+        # limit_end_effector_pos_z   = [0.2, 1.0]    # min/max [m] in base frame 
+        # limit_end_effector_roll    = [-0.5, 0.5]   # min/max [rad] in base frame (0.5 rad = 30 degrees)
+        # limit_end_effector_pitch   = [-0.5, 0.5]   # min/max [rad] in base frame 
+        # limit_end_effector_yaw     = [-0.5, 0.5]   # min/max [rad] in base frame 
+        # limit_end_effector_gripper = [-0.17, 0.17] # min/max [rad] (0.17 rad = 10 degrees)
+        # # Number of bins : np.linspace(min + bin_size / 2, max - bin_size / 2, nb_bins)
+        # num_bins_end_effector_pos_x   = 20   # 1.6/20 = 8cm per bin
+        # num_bins_end_effector_pos_y   = 20   # 1.6/20 = 8cm per bin
+        # num_bins_end_effector_pos_z   = 10   # 0.8/10 = 8cm per bin
+        # num_bins_end_effector_roll    = 6    # 10 degrees per bin
+        # num_bins_end_effector_pitch   = 6    # 10 degrees per bin
+        # num_bins_end_effector_yaw     = 6    # 10 degrees per bin
+        # num_bins_end_effector_gripper = 2    # 10 degrees per bin
+
+        ##############
+        ## Deepak's ##
+        ##############     
+        ee_sphe_radius = [0.2, 0.7] # Deepak
+        ee_sphe_pitch = [-2*np.pi/5, 2*np.pi/5] # Deepak
+        ee_sphe_yaw = [-3*np.pi/5, 3*np.pi/5] # Deepak
+        ee_timing = [1.0, 3.0] # Deepak  
+
+        limit_ee_sphe_radius = [0.2, 0.7] # Deepak
+        limit_ee_sphe_pitch = [-2*np.pi/5, 2*np.pi/5] # Deepak
+        limit_ee_sphe_yaw = [-3*np.pi/5, 3*np.pi/5] # Deepak
+        limit_ee_timing = [1.0, 3.0] # Deepak  
+
+        num_bins_ee_sphe_radius = 1 # Deepak
+        num_bins_ee_sphe_pitch = 1 # Deepak
+        num_bins_ee_sphe_yaw = 1 # Deepak
+        num_bins_ee_timing = 1 # Deepak
+
+
         command_curriculum = False
         max_reverse_curriculum = 1.
         max_forward_curriculum = 1.
@@ -142,6 +232,7 @@ class Cfg(PrefixProto, cli=False):
         max_yaw_curriculum = 1.
         exclusive_command_sampling = False
         num_commands = 3
+        resample_command = True
         resampling_time = 10.  # time before command are changed[s]
         subsample_gait = False
         gait_interval_s = 10.  # time between resampling gait params
@@ -156,9 +247,9 @@ class Cfg(PrefixProto, cli=False):
         curriculum_type = "RewardThresholdCurriculum"
         lipschitz_threshold = 0.9
 
-        num_lin_vel_bins = 20
+        num_lin_vel_bins = 30
         lin_vel_step = 0.3
-        num_ang_vel_bins = 20
+        num_ang_vel_bins = 30
         ang_vel_step = 0.3
         distribution_update_extension_distance = 1
         curriculum_seed = 100
@@ -227,9 +318,11 @@ class Cfg(PrefixProto, cli=False):
 
     class curriculum_thresholds(PrefixProto, cli=False):
         tracking_lin_vel = 0.8  # closer to 1 is tighter
-        tracking_ang_vel = 0.5
-        tracking_contacts_shaped_force = 0.8  # closer to 1 is tighter
-        tracking_contacts_shaped_vel = 0.8
+        tracking_ang_vel = 0.7
+        tracking_lin_vel_balanced = 0.6
+        tracking_contacts_shaped_force = 0.9  # closer to 1 is tighter
+        tracking_contacts_shaped_vel = 0.9
+        dribbling_ball_vel = 0.8
 
     class init_state(PrefixProto, cli=False):
         pos = [0.0, 0.0, 1.]  # x,y,z [m]
@@ -276,31 +369,60 @@ class Cfg(PrefixProto, cli=False):
     class domain_rand(PrefixProto, cli=False):
         rand_interval_s = 10
         randomize_rigids_after_start = True
+
+        # types of randomization
         randomize_friction = True
-        friction_range = [0.5, 1.25]  # increase range
+        randomize_friction_indep = False
+        randomize_ground_friction = False
         randomize_restitution = False
-        restitution_range = [0, 1.0]
+        randomize_ground_friction = False
+        randomize_ground_restitution = False
+        randomize_tile_roughness = False
         randomize_base_mass = False
-        # add link masses, increase range, randomize inertia, randomize joint properties
-        added_mass_range = [-1., 1.]
         randomize_com_displacement = False
-        # add link masses, increase range, randomize inertia, randomize joint properties
-        com_displacement_range = [-0.15, 0.15]
         randomize_motor_strength = False
-        motor_strength_range = [0.9, 1.1]
+        randomize_motor_offset = False
         randomize_Kp_factor = False
-        Kp_factor_range = [0.8, 1.3]
         randomize_Kd_factor = False
+        randomize_gravity = False
+        randomize_ball_drag = False
+        randomize_ball_restitution = False
+        randomize_ball_friction = False
+        randomize_foot_height_forced = False
+
+        # randomization ranges
+        friction_range = [0.5, 1.25]  # increase range
+        restitution_range = [0., 1.0]
+        ground_friction_range = [0., 1.0]
+        ground_restitution_range = [0, 1.0]
+        tile_roughness_range = [0.0, 0.1]
+        added_mass_range = [-1., 1.]
+        com_displacement_range = [-0.15, 0.15]
+        motor_strength_range = [0.9, 1.1]
+        motor_offset_range = [0.0, 0.0]
+        Kp_factor_range = [0.8, 1.3]
         Kd_factor_range = [0.5, 1.5]
         gravity_rand_interval_s = 7
         gravity_impulse_duration = 1.0
-        randomize_gravity = False
         gravity_range = [-1.0, 1.0]
+        drag_range = [0.0, 1.0]
+        ball_drag_rand_interval_s = 15
+        ball_restitution_range = [0.5, 1.0]
+        ball_friction_range = [0.5, 1.0]
+        foot_height_forced_range = [[-0.15, 0.15, 0.02], [0.15, 0.15, 0.25]]
+        foot_height_forced_rand_interval_s = 3
+        foot_height_forced_prob = 0.5
+        foot_motion_duration = 0.3
+        
+        # random pushes and parameters
         push_robots = True
         push_interval_s = 15
         max_push_vel_xy = 1.
         randomize_lag_timesteps = True
         lag_timesteps = 6
+        foot_force_kp = 20.
+        foot_force_kd = 1.
+        max_foot_force = 30.
 
     class rewards(PrefixProto, cli=False):
         only_positive_rewards = True  # if true negative total rewards are clipped at zero (avoids early termination problems)
@@ -311,6 +433,7 @@ class Cfg(PrefixProto, cli=False):
         tracking_sigma_lat = 0.25  # tracking reward = exp(-error^2/sigma)
         tracking_sigma_long = 0.25  # tracking reward = exp(-error^2/sigma)
         tracking_sigma_yaw = 0.25  # tracking reward = exp(-error^2/sigma)
+        torque_uncertainty_sigma = 1.0 # torque uncertainty reward = exp(-disagreement/sigma)
         soft_dof_pos_limit = 1.  # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 1.
         soft_torque_limit = 1.
@@ -322,21 +445,59 @@ class Cfg(PrefixProto, cli=False):
         terminal_foot_height = -0.005
         use_terminal_roll_pitch = False
         terminal_body_ori = 0.5
+        use_terminal_time_since_last_obs = False
+        terminal_time_since_last_obs = 50
         kappa_gait_probs = 0.07
         gait_force_sigma = 50.
         gait_vel_sigma = 0.5
         footswing_height = 0.09
+        front_target = [[0.17, -0.09, 0]]
+        estimation_bonus_dims = []
+        estimation_bonus_weights = []
+
+        integral_history_len = 25
+        
+        constrict = False
+        constrict_indices = []
+        constrict_ranges = [[]]
+        constrict_after = 0
 
     class reward_scales(ParamsProto, cli=False):
+
+        ############################
+        # Inverse IK: door opening #
+        ############################
+        manip_pos_tracking = 0.0
+        manip_energy = 0.0
+        loco_energy = 0.0
+        tracking_lin_vel_x = 0.0
+        tracking_ang_vel_yaw = 0.0
+        alive = 0.0
+        # end_effector_position_tracking = 0.0
+        # end_effector_orientation_tracking = 0.0
+        # body_height_tracking = 0.0
+        # end_effector_pos_x_tracking = 0.0
+        # end_effector_pos_y_tracking = 0.0
+        # end_effector_pos_z_tracking = 0.0
+        # end_effector_ori_roll_tracking = 0.0
+        # end_effector_ori_pitch_tracking = 0.0
+        # end_effector_ori_yaw_tracking = 0.0
+
+
         termination = -0.0
+        vel = 0.0
         tracking_lin_vel = 1.0
         tracking_ang_vel = 0.5
+        tracking_x_vel = 0.0
+        tracking_other_vels = 0.0
         lin_vel_z = -2.0
         ang_vel_xy = -0.05
         orientation = -0.
         torques = -0.00001
         dof_vel = -0.
+        arm_dof_vel = 0.
         dof_acc = -2.5e-7
+        arm_dof_acc = 0.
         base_height = -0.
         feet_air_time = 1.0
         collision = -1.
@@ -345,24 +506,69 @@ class Cfg(PrefixProto, cli=False):
         stand_still = -0.
         tracking_lin_vel_lat = 0.
         tracking_lin_vel_long = 0.
+        tracking_lin_vel_balanced = 0.
         tracking_contacts = 0.
         tracking_contacts_shaped = 0.
         tracking_contacts_shaped_force = 0.
         tracking_contacts_shaped_vel = 0.
         jump = 0.0
         energy = 0.0
+        energy_analytic = 0.0
         energy_expenditure = 0.0
         survival = 0.0
         dof_pos_limits = 0.0
+        dof_vel_limits = 0.0
+        torque_limits = 0.0
         feet_contact_forces = 0.
         feet_slip = 0.
+        feet_clearance_cmd = 0.
         feet_clearance_cmd_linear = 0.
+        feet_accel = 0.
         dof_pos = 0.
         action_smoothness_1 = 0.
         action_smoothness_2 = 0.
         base_motion = 0.
         feet_impact_vel = 0.0
         raibert_heuristic = 0.0
+        dribbling_robot_ball_vel = 0.0
+        dribbling_robot_ball_pos = 0.0
+        dribbling_ball_vel = 0.0
+        dribbling_robot_ball_yaw = 0.0
+        dribbling_ball_vel_norm = 0.0
+        dribbling_ball_vel_angle = 0.0
+        gripper_handle_pos = 0.0
+        gripper_handle_height = 0.0
+        turn_handle = 0.0
+        open_door = 0.0
+        robot_door_pos = 0.0
+        robot_door_ori = 0.0
+        estimation_bonus = 0.0
+        foot_ext_force = 0.0
+        bc = 0.0
+        energy_action_smoothness_1 = 0.0
+        energy_action_smoothness_2 = 0.0
+        energy_footswing_bonus = 0.0
+
+        tracking_lin_vel_integral = 0.0
+
+        tracking_goal_vel = 0.0
+        tracking_goal_vel_xy = 0.0
+        tracking_yaw = 0.0
+        # regularization rewards
+        # lin_vel_z = -1.0
+        # ang_vel_xy = -0.05
+        # orientation = -1.
+        # dof_acc = -2.5e-7
+        # collision = -10.
+        # action_rate = -0.1
+        delta_torques = 0.0 #-1.0e-7
+        # torques = -0.00001
+        hip_pos = 0.0 #-0.5
+        dof_error = 0.0 #-0.04
+        feet_stumble = 0.0 #-1
+        # feet_edge = -1
+        trot_symmetry = 0.0
+        
 
     class normalization(PrefixProto, cli=False):
         clip_observations = 100.
@@ -371,6 +577,7 @@ class Cfg(PrefixProto, cli=False):
         friction_range = [0.05, 4.5]
         ground_friction_range = [0.05, 4.5]
         restitution_range = [0, 1.0]
+        roughness_range= [0.0, 0.1]
         added_mass_range = [-1., 3.]
         com_displacement_range = [-0.1, 0.1]
         motor_strength_range = [0.9, 1.1]
@@ -385,6 +592,11 @@ class Cfg(PrefixProto, cli=False):
         body_height_range = [0.0, 0.60]
         gravity_range = [-1.0, 1.0]
         motion = [-0.01, 0.01]
+        stair_height_range = [0.0, 0.3]
+        stair_run_range = [0.0, 0.5]
+        stair_ori_range = [-3.14, 3.14]
+        ball_velocity_range = [-5.0, 5.0]
+        ball_drag_range = [0.0, 1.0]
 
     class obs_scales(PrefixProto, cli=False):
         lin_vel = 2.0
@@ -407,6 +619,24 @@ class Cfg(PrefixProto, cli=False):
         segmentation_image = 1.0
         rgb_image = 1.0
         depth_image = 1.0
+        ball_pos = 1.0
+
+        ############################
+        # Inverse IK: door opening #
+        ############################
+        
+        # end_effector_pos_x_cmd = 1.0
+        # end_effector_pos_y_cmd = 1.0
+        # end_effector_pos_z_cmd = 0.7
+        # end_effector_roll_cmd = 0.5
+        # end_effector_pitch_cmd = 0.5
+        # end_effector_yaw_cmd = 0.5
+        # end_effector_gripper_cmd = 0.25
+
+        ee_sphe_radius_cmd = 0.5   # 0.2 - 0.7 Deepak
+        ee_sphe_pitch_cmd = 1.0    # -1.3 , 1.3 Deepak
+        ee_sphe_yaw_cmd = 1.3      # -1.9 , 1.9 Deepak
+        ee_timing_cmd = 2.0        # 1.0, 3.0 # Deepak
 
     class noise(PrefixProto, cli=False):
         add_noise = True
@@ -425,6 +655,7 @@ class Cfg(PrefixProto, cli=False):
         segmentation_image = 0.0
         rgb_image = 0.0
         depth_image = 0.0
+        ball_pos = 0.05
 
     # viewer camera:
     class viewer(PrefixProto, cli=False):

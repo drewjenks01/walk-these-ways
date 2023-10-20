@@ -13,7 +13,6 @@ import numpy as np
 from navigation.vision.models.base_model import BaseModel
 from navigation.vision.models.navigators.vint_navigator import ViNTNavigator
 
-from navigation.vision.models.navigators.vint_utils.vint import ViNT
 from navigation import constants
 
 

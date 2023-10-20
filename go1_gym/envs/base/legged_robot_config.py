@@ -5,7 +5,7 @@ from params_proto import PrefixProto, ParamsProto
 
 class Cfg(PrefixProto, cli=False):
     class env(PrefixProto, cli=False):
-        num_envs = 1000
+        num_envs = 4096
         n_proprio = 53
         num_observations = 235
         num_scalar_observations = 42

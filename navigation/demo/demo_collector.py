@@ -6,7 +6,7 @@ import os
 import pickle as pkl
 import shutil
 import time
-import matplotlib.pyplot as plt
+from PIL import Image
 
 
 class DemoCollector:
@@ -32,7 +32,7 @@ class DemoCollector:
         self.demo_command_data = utils.get_empty_demo_command_data()
 
         self.fps = constants.FPS
-        self.how_often_capture_data = 1/self.fps
+        self.how_often_capture_data = 1
         self.timer = 0.0
 
         self.currently_collecting = False
@@ -61,7 +61,8 @@ class DemoCollector:
                 pkl.dump(data, file)
 
     def save_image_to_file(data, filepath):
-        plt.imsave(filepath, data)
+        img = Image.fromarray(data)
+        img.save(filepath)
 
 
     def add_data_to_run(self, command_data: dict, image_data: dict):

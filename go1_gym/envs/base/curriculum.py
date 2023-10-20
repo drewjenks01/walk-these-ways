@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from matplotlib import pyplot as plt
+# from matplotlib import pyplot as plt
 
 
 def is_met(scale, l2_err, threshold):
@@ -25,9 +25,9 @@ class Curriculum:
 
         self.weights[inds] = value
 
+
     def __init__(self, seed, **key_ranges):
         self.rng = np.random.RandomState(seed)
-
         self.cfg = cfg = {}
         self.indices = indices = {}
         for key, v_range in key_ranges.items():
@@ -40,7 +40,6 @@ class Curriculum:
 
         # self.bin_sizes = {key: arr[1] - arr[0] for key, arr in cfg.items()}
         self.bin_sizes = {key: (v_range[1] - v_range[0]) / v_range[2] for key, v_range in key_ranges.items()}
-
         self._raw_grid = np.stack(np.meshgrid(*cfg.values(), indexing='ij'))
         self._idx_grid = np.stack(np.meshgrid(*indices.values(), indexing='ij'))
         self.keys = [*key_ranges.keys()]
@@ -75,6 +74,7 @@ class Curriculum:
             temp_weights[valid_inds] = self.weights[valid_inds]
             inds = self.rng.choice(self.indices, batch_size, p=temp_weights / temp_weights.sum())
         else: # if no bounds given
+            # print(self.weights, self.weights.sum())
             inds = self.rng.choice(self.indices, batch_size, p=self.weights / self.weights.sum())
 
         return self.grid.T[inds], inds
@@ -82,9 +82,15 @@ class Curriculum:
     def sample_uniform_from_cell(self, centroids):
         bin_sizes = np.array([*self.bin_sizes.values()])
         low, high = centroids + bin_sizes / 2, centroids - bin_sizes / 2
-        return self.rng.uniform(low, high)#.clip(self.lows, self.highs)
+        # print(self.rng.get_state()[-3])
+        rand = self.rng.uniform(low, high)
+        # print(self.rng.uniform(low, high))
+        # print(self.rng.uniform(low, high))
+        return rand#.clip(self.lows, self.highs)
 
     def sample(self, batch_size, low=None, high=None):
+        # print("low: ", low, " high: ", high)
+        # print("self.weights: ", self.weights)
         cgf_centroid, inds = self.sample_bins(batch_size, low=low, high=high)
         return np.stack([self.sample_uniform_from_cell(v_range) for v_range in cgf_centroid]), inds
 
@@ -177,5 +183,5 @@ if __name__ == '__main__':
 
     samples, bins = r.sample(10_000)
 
-    plt.scatter(*samples.T[:2])
-    plt.show()
+    # plt.scatter(*samples.T[:2])
+    # plt.show()

@@ -13,7 +13,7 @@ import numpy as np
 # Base class for RL tasks
 class BaseTask(gym.Env):
 
-    def __init__(self, cfg, sim_params, physics_engine, sim_device, headless, eval_cfg=None):
+    def __init__(self, cfg, sim_params, physics_engine, sim_device, headless):
         self.gym = gymapi.acquire_gym()
 
         if isinstance(physics_engine, str) and physics_engine == "SIM_PHYSX":
@@ -24,6 +24,9 @@ class BaseTask(gym.Env):
         self.sim_device = sim_device
         sim_device_type, self.sim_device_id = gymutil.parse_device_str(self.sim_device)
         self.headless = headless
+        
+        
+
 
         # env device is GPU only if sim is on GPU and use_gpu_pipeline=True, otherwise returned tensors are copied to CPU by physX.
         if sim_device_type == 'cuda' and sim_params.use_gpu_pipeline:
@@ -40,14 +43,9 @@ class BaseTask(gym.Env):
         self.num_privileged_obs = cfg.env.num_privileged_obs
         self.num_actions = cfg.env.num_actions
 
-        if eval_cfg is not None:
-            self.num_eval_envs = eval_cfg.env.num_envs
-            self.num_train_envs = cfg.env.num_envs
-            self.num_envs = self.num_eval_envs + self.num_train_envs
-        else:
-            self.num_eval_envs = 0
-            self.num_train_envs = cfg.env.num_envs
-            self.num_envs = cfg.env.num_envs
+
+        self.num_train_envs = cfg.env.num_envs
+        self.num_envs = cfg.env.num_envs
 
         # optimization flags for pytorch JIT
         torch._C._jit_set_profiling_mode(False)
@@ -61,8 +59,14 @@ class BaseTask(gym.Env):
         self.reset_buf = torch.ones(self.num_envs, device=self.device, dtype=torch.long)
         self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
         self.time_out_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        self.contact_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        self.body_height_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        self.body_ori_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        self.time_since_last_obs_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
         self.privileged_obs_buf = torch.zeros(self.num_envs, self.num_privileged_obs, device=self.device,
                                               dtype=torch.float)
+        self.too_big_change_envs = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        
         # self.num_privileged_obs = self.num_obs
 
         self.extras = {}
@@ -70,6 +74,9 @@ class BaseTask(gym.Env):
         # create envs, sim and viewer
         self.create_sim()
         self.gym.prepare_sim(self.sim)
+        # import time
+        # time.sleep(10)
+        # exit()
 
         # todo: read from config
         self.enable_viewer_sync = True

@@ -47,4 +47,3 @@ class VelocityTrackingEasyEnv(LeggedRobot):
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
         obs, _, _, _ = self.step(torch.zeros(self.num_envs, self.num_actions, device=self.device, requires_grad=False))
         return obs
-

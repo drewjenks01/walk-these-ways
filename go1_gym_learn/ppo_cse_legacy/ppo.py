@@ -8,7 +8,7 @@ from params_proto import PrefixProto
 from go1_gym_learn.ppo_cse import ActorCritic
 from go1_gym_learn.ppo_cse import RolloutStorage
 from go1_gym_learn.ppo_cse import caches
-from go1_gym_learn.ppo_cse.lagrangian_multiplier import LagrangianMultiplier
+
 
 class PPO_Args(PrefixProto):
     # algorithm
@@ -29,6 +29,13 @@ class PPO_Args(PrefixProto):
     max_grad_norm = 1.
 
     selective_adaptation_module_loss = False
+
+
+class EIPO_Args(PrefixProto):
+    alpha_lr = 0.01
+    alpha_g_clip = 1.0
+    alpha_clip = 10
+    alpha_bsz = 8
 
 
 class PPO:
@@ -62,15 +69,14 @@ class PPO:
                                              lr=PPO_Args.adaptation_module_learning_rate)
         self.alpha_derivatives = []
         self.alpha_grad = 1.0
-        self.transition = RolloutStorage.Transition()        
+        self.transition = RolloutStorage.Transition()
+
+        
 
     def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, privileged_obs_shape, obs_history_shape,
-                     action_shape, args):
+                     action_shape):
         self.storage = RolloutStorage(num_envs, num_transitions_per_env, actor_obs_shape, privileged_obs_shape,
                                       obs_history_shape, action_shape, self.actor_critic.exp, self.device)
-        if 'eipo' in self.actor_critic.exp:
-            self.lgrgn_mtpr = LagrangianMultiplier(args.min_vel, args.max_vel, args.num_vel_itvl, num_envs, 
-                 num_transitions_per_env, self.alpha, self.lmbd, self.storage, self.device)
 
     def test_mode(self):
         self.actor_critic.test()
@@ -133,8 +139,8 @@ class PPO:
     @torch.no_grad()
     def process_advantages(self, advantages_batch, rewards_batch):
         if 'const' in self.actor_critic.exp:
-            advantages_batch['const_mixed'] = advantages_batch['ext'] + \
-                self.lmbd * advantages_batch['int']
+            advantages_batch['const_mixed'] = (1 + self.alpha) * \
+                advantages_batch['ext'] + self.lmbd * advantages_batch['int']
         
         if 'eipo' in self.actor_critic.exp:
             advantages_batch['eipo_mixed'] = (1 + self.alpha) * \
@@ -183,9 +189,7 @@ class PPO:
             label_start_end[label] = (si, si + length)
             si = si + length
             mean_adaptation_losses[label] = 0
-
-        if 'eipo' in self.actor_critic.exp:
-            self.lgrgn_mtpr.compute_advantages()
+        
         generator = self.storage.mini_batch_generator(PPO_Args.num_mini_batches, PPO_Args.num_learning_epochs)
         for obs_batch, critic_obs_batch, privileged_obs_batch, obs_history_batch, actions_batch, target_values_batch, advantages_batch, \
             rewards_batch, returns_batch, old_actions_log_prob_batch, \
@@ -234,13 +238,12 @@ class PPO:
                             param_group['lr'] = self.learning_rate[n]
 
             # Surrogate loss
-            # self.process_advantages(advantages_batch, rewards_batch)
+            self.process_advantages(advantages_batch, rewards_batch)
             if self.actor_critic.exp in ['orig', 'trkv', 'enrg']:
                 surrogate_loss = self.compute_surrogate_loss(actions_log_prob_batch['ext'], \
                                                             old_actions_log_prob_batch['ext'], \
                                                             advantages_batch['ext'])
             elif 'const' in self.actor_critic.exp:
-                self.process_advantages(advantages_batch, rewards_batch)
                 surrogate_loss = self.compute_surrogate_loss(actions_log_prob_batch['ext'], \
                                                             old_actions_log_prob_batch['ext'], \
                                                             advantages_batch['const_mixed'])
@@ -260,20 +263,20 @@ class PPO:
                 
                 surrogate_loss = eipo_ao + ext_ao + eipo_po + ext_po
                 
-                # with torch.no_grad():
-                #     # alpha_derivative = self.compute_surrogate_loss(actions_log_prob_batch['mixed-ext'], \
-                #     #                                         old_actions_log_prob_batch['ext'], \
-                #     #                                         advantages_batch['ext'])
-                #     # self.alpha_derivatives.append(alpha_derivative.mean().detach().cpu().item())
-                #     alpha_derivative = advantages_batch['eipo_ext'].sum().detach().cpu().item() - \
-                #         advantages_batch['ext'].sum().detach().cpu().item()
-                #     self.alpha_derivatives.append(alpha_derivative)
-                #     if len(self.alpha_derivatives) == EIPO_Args.alpha_bsz:
-                #         self.alpha_grad = np.mean(self.alpha_derivatives) * 1e3
-                #         self.alpha = self.alpha - EIPO_Args.alpha_lr * np.clip(self.alpha_grad, \
-                #                                                                -EIPO_Args.alpha_g_clip, EIPO_Args.alpha_g_clip)
-                #         self.alpha = np.clip(self.alpha, -EIPO_Args.alpha_clip, EIPO_Args.alpha_clip)
-                #         self.alpha_derivatives = []
+                with torch.no_grad():
+                    # alpha_derivative = self.compute_surrogate_loss(actions_log_prob_batch['mixed-ext'], \
+                    #                                         old_actions_log_prob_batch['ext'], \
+                    #                                         advantages_batch['ext'])
+                    # self.alpha_derivatives.append(alpha_derivative.mean().detach().cpu().item())
+                    alpha_derivative = advantages_batch['eipo_ext'].sum().detach().cpu().item() - \
+                        advantages_batch['ext'].sum().detach().cpu().item()
+                    self.alpha_derivatives.append(alpha_derivative)
+                    if len(self.alpha_derivatives) == EIPO_Args.alpha_bsz:
+                        self.alpha_grad = np.mean(self.alpha_derivatives) * 1e3
+                        self.alpha = self.alpha - EIPO_Args.alpha_lr * np.clip(self.alpha_grad, \
+                                                                               -EIPO_Args.alpha_g_clip, EIPO_Args.alpha_g_clip)
+                        self.alpha = np.clip(self.alpha, -EIPO_Args.alpha_clip, EIPO_Args.alpha_clip)
+                        self.alpha_derivatives = []
 
             # Value function loss
             value_loss_dict = {}
@@ -339,8 +342,6 @@ class PPO:
         mean_decoder_test_loss_student /= (num_updates * PPO_Args.num_adaptation_module_substeps)
         for label in PPO_Args.adaptation_labels:
             mean_adaptation_losses[label] /= (num_updates * PPO_Args.num_adaptation_module_substeps * PPO_Args.adaptation_batch_size)
-        if 'eipo' in self.actor_critic.exp:
-            self.lgrgn_mtpr.update_alpha_values()
         self.storage.clear()
         # if 'eipo' in self.actor_critic.exp and it == 1500:
         #     for p in self.actor_critic.a2c_models['ext'].parameters():

@@ -74,8 +74,6 @@ class Runner:
         self.env = env
         self.exp = args.exp
 
-        self.randint = torch.randint(0, 1000000, (1,)).item()
-
         actor_critic = ActorCritic(self.env.num_obs,
                                       self.env.num_privileged_obs,
                                       self.env.num_obs_history,
@@ -103,7 +101,7 @@ class Runner:
         if 'eipo' in self.alg.actor_critic.exp:
             num_train_envs = num_train_envs // 2
         self.alg.init_storage(num_train_envs, self.num_steps_per_env, [self.env.num_obs],
-                              [self.env.num_privileged_obs], [self.env.num_obs_history], [self.env.num_actions], args)
+                              [self.env.num_privileged_obs], [self.env.num_obs_history], [self.env.num_actions])
 
         self.tot_timesteps = 0
         self.tot_time = 0
@@ -146,10 +144,6 @@ class Runner:
         tot_iter = self.current_learning_iteration + num_learning_iterations
         for it in range(self.current_learning_iteration, tot_iter):
             start = time.time()
-            energies = []
-            torque_uncertainty_reward = []
-            velocities = []
-            std_norm = []
             # Rollout
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
@@ -162,18 +156,6 @@ class Runner:
                         actions = actions['ext']
                     ret = self.env.step(actions)
                     obs_dict, rewards, dones, infos = ret
-
-                    ## Logging metrics
-                    energies.append(self.env.compute_energy().mean().item())
-                    torque_uncertainty_reward.append(torch.exp(-self.env.compute_torque_uncertainty()).mean().item())
-                    velocities.append(self.env.base_lin_vel[:,0].mean().item())
-                    ## Logging norm of action std
-                    action_stds = self.alg.actor_critic.action_std
-                    std_norms = {n: v.norm(dim=-1).mean().item() for (n, v) in action_stds.items()}
-                    # take mean over dictionary
-                    # find number of keys in dictionary std_norms
-                    std_norm.append(sum(std_norms.values()) / len(std_norms))
-
                     obs, privileged_obs, obs_history = obs_dict["obs"], obs_dict["privileged_obs"], obs_dict[
                         "obs_history"]
 
@@ -182,8 +164,7 @@ class Runner:
                     rewards = {n: v.to(self.device) for (n, v) in rewards.items()}
                     self.alg.process_env_step({n: v[:num_train_envs] for (n, v) in rewards.items()}
                             , dones[:num_train_envs], infos)
-                    if 'eipo' in self.alg.actor_critic.exp:
-                        self.alg.lgrgn_mtpr.compute_alpha_values(self.env.commands[:,0])
+
                     if 'train/episode' in infos:
                         for (k, v) in infos['train/episode'].items():
                             if 'rew_' in k and k in record_log:
@@ -272,30 +253,9 @@ class Runner:
                 "mean_adaptation_module_test_loss": mean_adaptation_module_test_loss
             })
             if 'eipo' in self.alg.actor_critic.exp:
-                if isinstance(self.alg.lgrgn_mtpr.alpha, float):
-                    record_log['alpha_value'] = self.alg.lgrgn_mtpr.alpha
-                else:
-                    for idx, v in enumerate(self.alg.lgrgn_mtpr.alpha.weight.data):
-                        record_log[f'alpha_value_{idx}'] = v.item()
-                record_log['alpha_grad'] = self.alg.lgrgn_mtpr.alpha_grad
-            record_log['avg_energy_consumption'] = sum(energies) / len(energies)
-            record_log['torque_uncertainty_reward'] = sum(torque_uncertainty_reward) / len(torque_uncertainty_reward)
-            record_log['std_norm'] = sum(std_norm) / len(std_norm)
-            record_log['avg_velocity'] = sum(velocities) / len(velocities)
-
-            wandb_record_log = {}
-            for k in record_log:
-                if k.startswith('rew_ext'):
-                    wandb_record_log[k.replace('rew_ext_', 'return_ext/')] = record_log[k]
-                elif k.startswith('rew_mixed'):
-                    wandb_record_log[k.replace('rew_mixed_', 'return_mixed/')] = record_log[k]
-                elif k.startswith('rew'):
-                    wandb_record_log[k.replace('rew_', 'return/')] = record_log[k]
-                else:
-                    wandb_record_log[f'metrics/{k}'] = record_log[k]
-                
-            wandb.log(wandb_record_log, step=it)
-
+                record_log['alpha_value'] = self.alg.alpha
+                record_log['alpha_grad'] = self.alg.alpha_grad
+            wandb.log(record_log, step=it)
             record_log = {}
 
             
@@ -319,7 +279,7 @@ class Runner:
                 #     logger.torch_save(self.alg.actor_critic.state_dict(), f"checkpoints/ac_weights_{it:06d}.pt")
                 #     logger.duplicate(f"checkpoints/ac_weights_{it:06d}.pt", f"checkpoints/ac_weights_last.pt")
                     
-                    path = f'./tmp{self.randint}/legged_data-{self.alg.actor_critic.exp}'
+                    path = f'./tmp/legged_data-{self.alg.actor_critic.exp}'
                     if 'const' in path:
                         path = path + '-alpha{:.1f}'.format(self.alg.alpha)
                     for n in self.alg.actor_critic.a2c_models:
@@ -337,21 +297,17 @@ class Runner:
                         adaptation_module = copy.deepcopy(self.alg.actor_critic.a2c_models[n].adaptation_module).to('cpu')
                         traced_script_adaptation_module = torch.jit.script(adaptation_module)
                         traced_script_adaptation_module.save(adaptation_module_path)
-                        wandb.save(adaptation_module_path)
 
                         adaptation_module_path = f'{path}-{n}/adaptation_module_latest.jit'
                         traced_script_adaptation_module.save(adaptation_module_path)
-                        wandb.save(adaptation_module_path)
 
                         body_path = f'{path}-{n}/body_{it}.jit'
                         body_model = copy.deepcopy(self.alg.actor_critic.a2c_models[n].actor_body).to('cpu')
                         traced_script_body_module = torch.jit.script(body_model)
                         traced_script_body_module.save(body_path)
-                        wandb.save(body_path)
 
                         body_path = f'{path}-{n}/body_latest.jit'
                         traced_script_body_module.save(body_path)
-                        wandb.save(body_path)
 
                         # logger.upload_file(file_path=adaptation_module_path, target_path=f"checkpoints/", once=False)
                         # logger.upload_file(file_path=body_path, target_path=f"checkpoints/", once=False)
@@ -361,19 +317,19 @@ class Runner:
                         ac_weights_path = f"{path}-{n}/ac_weights_latest.pt"
                         torch.save(self.alg.actor_critic.a2c_models[n].state_dict(), ac_weights_path)
                     
-                    wandb.save(f"./tmp{self.randint}/legged_data/adaptation_module_{it}.jit")
-                    wandb.save(f"./tmp{self.randint}/legged_data/body_{it}.jit")
-                    wandb.save(f"./tmp{self.randint}/legged_data/ac_weights_{it}.pt")
-                    wandb.save(f"./tmp{self.randint}/legged_data/adaptation_module_latest.jit")
-                    wandb.save(f"./tmp{self.randint}/legged_data/body_latest.jit")
-                    wandb.save(f"./tmp{self.randint}/legged_data/ac_weights_latest.pt")
+                    wandb.save(f"./tmp/legged_data/adaptation_module_{it}.jit")
+                    wandb.save(f"./tmp/legged_data/body_{it}.jit")
+                    wandb.save(f"./tmp/legged_data/ac_weights_{it}.pt")
+                    wandb.save(f"./tmp/legged_data/adaptation_module_latest.jit")
+                    wandb.save(f"./tmp/legged_data/body_latest.jit")
+                    wandb.save(f"./tmp/legged_data/ac_weights_latest.pt")
                     
             self.current_learning_iteration += num_learning_iterations
 
         # torch.save(self.alg.actor_critic.state_dict(), f"./tmp/legged_data/ac_weights_last.pt")
         # wandb.save(f"./tmp/legged_data/ac_weights_last.pt")
 
-        path = f'./tmp{self.randint}/legged_data'
+        path = './tmp/legged_data'
         for n in self.alg.actor_critic.a2c_models:
             os.makedirs(f'{path}-{n}', exist_ok=True)
 
@@ -389,8 +345,8 @@ class Runner:
 
         # logger.upload_file(file_path=adaptation_module_path, target_path=f"checkpoints/", once=False)
         # logger.upload_file(file_path=body_path, target_path=f"checkpoints/", once=False)
-        wandb.save(f"./tmp{self.randint}/legged_data/adaptation_module_latest.jit")
-        wandb.save(f"./tmp{self.randint}/legged_data/body_latest.jit")
+        wandb.save(f"./tmp/legged_data/adaptation_module_latest.jit")
+        wandb.save(f"./tmp/legged_data/body_latest.jit")
 
     def log_video(self, it):
         if it - self.last_recording_it >= RunnerArgs.save_video_interval:

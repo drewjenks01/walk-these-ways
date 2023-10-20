@@ -201,8 +201,6 @@ class ActorCritic(nn.Module):
                     num_actions), 'mixed': ActorCriticModel(num_privileged_obs,
                     num_obs_history,
                     num_actions, True, True)})
-                # self.a2c_models['mixed'].critic_body_enrg = \
-                #     self.a2c_models['mixed'].build_critic_layers()
 
         else:
             self.a2c_models = nn.ModuleDict({'ext': ActorCriticModel(num_privileged_obs,

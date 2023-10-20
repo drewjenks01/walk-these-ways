@@ -37,3 +37,4 @@ class Rewards:
         self.command_sums["ang_vel_residual"] += (self.base_ang_vel[:, 2] - self.commands[:, 2]) ** 2
         self.command_sums["ep_timesteps"] += 1
 
+

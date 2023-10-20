@@ -5,7 +5,7 @@ from isaacgym.torch_utils import *
 from isaacgym import gymapi
 from .rewards import Rewards
 
-class CoRLRewards(Rewards):
+class StairRewards(Rewards):
     def __init__(self, env):
         self.env = env
         self.actor_critic = None
@@ -16,12 +16,13 @@ class CoRLRewards(Rewards):
     # ------------ reward functions----------------
     def _reward_tracking_lin_vel(self):
         # Tracking of linear velocity commands (xy axes)
-        lin_vel_error = torch.sum(torch.square(self.env.commands[:, :2] - self.env.base_lin_vel[:, :2]), dim=1)
+        target_lin_vel = self.env.commands[:, :2].clone()
+        lin_vel_error = torch.sum(torch.square(target_lin_vel - self.env.base_lin_vel[:, :2]), dim=1)
         return torch.exp(-lin_vel_error / self.env.cfg.rewards.tracking_sigma)
 
     def _reward_tracking_ang_vel(self):
-        # Tracking of angular velocity commands (yaw)
-        ang_vel_error = torch.square(self.env.commands[:, 2] - self.env.base_ang_vel[:, 2])
+        target_ang_vel = self.env.commands[:, 2].clone()
+        ang_vel_error = torch.square(target_ang_vel - self.env.base_ang_vel[:, 2])
         return torch.exp(-ang_vel_error / self.env.cfg.rewards.tracking_sigma_yaw)
 
     def _reward_lin_vel_z(self):
@@ -46,8 +47,7 @@ class CoRLRewards(Rewards):
 
     def _reward_action_rate(self):
         # Penalize changes in actions
-        # return torch.sum(torch.square(self.env.last_actions - self.env.actions), dim=1)
-        return torch.sum(torch.square(self.env.last_joint_pos_target - self.env.joint_pos_target), dim=1)
+        return torch.sum(torch.square(self.env.last_actions[:, :self.env.num_actuated_dof] - self.env.actions[:, :self.env.num_actuated_dof]), dim=1)
 
     def _reward_collision(self):
         # Penalize collisions on selected bodies
@@ -60,16 +60,37 @@ class CoRLRewards(Rewards):
         out_of_limits += (self.env.dof_pos - self.env.dof_pos_limits[:, 1]).clip(min=0.)
         return torch.sum(out_of_limits, dim=1)
 
+    def _reward_dof_vel_limits(self):
+        # Penalize dof velocities too close to the limit
+        # clip to max error = 1 rad/s per joint to avoid huge penalties
+        return torch.sum(
+            (torch.abs(self.env.dof_vel) - self.env.dof_vel_limits * self.env.cfg.rewards.soft_dof_vel_limit).clip(min=0., max=1.),
+            dim=1)
+
+    def _reward_torque_limits(self):
+        # penalize torques too close to the limit
+        return torch.sum(
+            (torch.abs(self.env.torques) - self.env.torque_limits * self.env.cfg.rewards.soft_torque_limit).clip(min=0.), dim=1)
+
     def _reward_jump(self):
-        reference_heights = 0
+        reference_points = self.env.foot_positions[:, :, 0:2].view(-1, 2)
+        reference_heights = self.env.get_heights_points(reference_points).view(-1, 4).mean(1)
         body_height = self.env.base_pos[:, 2] - reference_heights
         jump_height_target = self.env.commands[:, 3] + self.env.cfg.rewards.base_height_target
+        reward = - torch.square(body_height - jump_height_target)
+        return reward
+    
+    def _reward_base_height(self):
+        reference_points = self.env.foot_positions[:, :, 0:2].view(-1, 2)
+        reference_heights = self.env.get_heights_points(reference_points).view(-1, 4).mean(1)
+        body_height = self.env.base_pos[:, 2] - reference_heights
+        jump_height_target = self.env.cfg.rewards.base_height_target
         reward = - torch.square(body_height - jump_height_target)
         return reward
 
     def _reward_tracking_contacts_shaped_force(self):
         foot_forces = torch.norm(self.env.contact_forces[:, self.env.feet_indices, :], dim=-1)
-        desired_contact = self.env.desired_contact_states
+        desired_contact = self.env.desired_contact_states + 0.0
 
         reward = 0
         for i in range(4):
@@ -79,7 +100,7 @@ class CoRLRewards(Rewards):
 
     def _reward_tracking_contacts_shaped_vel(self):
         foot_velocities = torch.norm(self.env.foot_velocities, dim=2).view(self.env.num_envs, -1)
-        desired_contact = self.env.desired_contact_states
+        desired_contact = self.env.desired_contact_states + 0.0
         reward = 0
         for i in range(4):
             reward += - (desired_contact[:, i] * (
@@ -97,14 +118,14 @@ class CoRLRewards(Rewards):
     def _reward_action_smoothness_1(self):
         # Penalize changes in actions
         diff = torch.square(self.env.joint_pos_target[:, :self.env.num_actuated_dof] - self.env.last_joint_pos_target[:, :self.env.num_actuated_dof])
-        diff = diff * (self.env.last_actions[:, :self.env.num_actuated_dof] != 0)  # ignore first step
+        diff = diff * (self.env.last_actions[:, :self.env.num_dof] != 0)  # ignore first step
         return torch.sum(diff, dim=1)
 
     def _reward_action_smoothness_2(self):
         # Penalize changes in actions
         diff = torch.square(self.env.joint_pos_target[:, :self.env.num_actuated_dof] - 2 * self.env.last_joint_pos_target[:, :self.env.num_actuated_dof] + self.env.last_last_joint_pos_target[:, :self.env.num_actuated_dof])
-        diff = diff * (self.env.last_actions[:, :self.env.num_actuated_dof] != 0)  # ignore first step
-        diff = diff * (self.env.last_last_actions[:, :self.env.num_actuated_dof] != 0)  # ignore second step
+        diff = diff * (self.env.last_actions[:, :self.env.num_dof] != 0)  # ignore first step
+        diff = diff * (self.env.last_last_actions[:, :self.env.num_dof] != 0)  # ignore second step
         return torch.sum(diff, dim=1)
 
     def _reward_feet_slip(self):
@@ -116,7 +137,8 @@ class CoRLRewards(Rewards):
         return rew_slip
 
     def _reward_feet_contact_vel(self):
-        reference_heights = 0
+        reference_points = self.env.foot_positions[:, :, 0:2].view(-1, 2)
+        reference_heights = self.env.get_heights_points(reference_points).view(-1, 4)
         near_ground = self.env.foot_positions[:, :, 2] - reference_heights < 0.03
         foot_velocities = torch.square(torch.norm(self.env.foot_velocities[:, :, 0:3], dim=2).view(self.env.num_envs, -1))
         rew_contact_vel = torch.sum(near_ground * foot_velocities, dim=1)
@@ -128,8 +150,10 @@ class CoRLRewards(Rewards):
                                      dim=-1) - self.env.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
 
     def _reward_feet_clearance_cmd_linear(self):
+        reference_points = self.env.foot_positions[:, :, 0:2].view(-1, 2)
+        reference_heights = self.env.get_heights_points(reference_points).view(-1, 4)
         phases = 1 - torch.abs(1.0 - torch.clip((self.env.foot_indices * 2.0) - 1.0, 0.0, 1.0) * 2.0)
-        foot_height = (self.env.foot_positions[:, :, 2]).view(self.env.num_envs, -1)# - reference_heights
+        foot_height = (self.env.foot_positions[:, :, 2]).view(self.env.num_envs, -1) - reference_heights
         target_height = self.env.commands[:, 9].unsqueeze(1) * phases + 0.02 # offset for foot radius 2cm
         rew_foot_clearance = torch.square(target_height - foot_height) * (1 - self.env.desired_contact_states)
         return torch.sum(rew_foot_clearance, dim=1)
@@ -203,43 +227,54 @@ class CoRLRewards(Rewards):
         reward = torch.sum(torch.square(err_raibert_heuristic), dim=(1, 2))
 
         return reward
-    
+
+    def _reward_feet_accel(self):
+        prev_foot_velocities = self.env.prev_foot_velocities[:, :, 2].view(self.env.num_envs, -1)
+        cur_feet_velocities = self.env.foot_velocities[:, :, 2].view(self.env.num_envs, -1)
+        # contact_states = torch.norm(self.env.contact_forces[:, self.env.feet_indices, :], dim=-1) > 1.0
+
+        # rew_foot_impact_vel = contact_states * torch.square(torch.clip(prev_foot_velocities, -100, 0))
+
+        feet_accel = torch.square(prev_foot_velocities - cur_feet_velocities)
+
+        return torch.sum(feet_accel, dim=1)
+
     def _reward_estimation_bonus(self):
         if self.actor_critic is None:
             print("Warning: estimation bonus reward is active but no adaptation module was loaded to the env!")
             return torch.zeros(self.env.num_envs).to(self.env.device)
-        # with torch.no_grad():
-        #     estimate = self.actor_critic.get_student_latent(self.env.obs_history)
+        with torch.no_grad():
+            estimate = self.actor_critic.get_student_latent(self.env.obs_history)
 
-        # target = self.env.privileged_obs_buf
 
-        # label_start_end = []
-        # si = 0
-        # for idx, length in enumerate(self.env.cfg.rewards.estimation_bonus_dims):
-        #     label_start_end += [(si, si + length)]
-        #     si = si + length
-
-        # if len(self.env.cfg.rewards.estimation_bonus_dims) > 0:
-        #     estimation_reward = 0
-        #     for k, (dim, weight) in enumerate(zip(self.env.cfg.rewards.estimation_bonus_dims, self.env.cfg.rewards.estimation_bonus_weights)):
-        #         start, end = label_start_end[k]
-        #         selection_indices = torch.linspace(start, end - 1, steps=end - start, dtype=torch.long)
-        #         # @TODO: Change?
-        #         estimation_error = torch.sum(torch.square(estimate[:, selection_indices] - target[:, selection_indices]), dim=1).to(self.env.device) * weight
-        #         estimation_reward += estimation_error
-        # else:
-        #     estimation_error = torch.square(estimate - self.env.privileged_obs_buf)
-        #     estimation_reward = torch.sum(estimation_error, dim=1).to(self.env.device)
-
-        obs = self.env.obs_history
         target = self.env.privileged_obs_buf
-        estimation_errors = self.actor_critic.estimation_module.compute_losses(target, obs, reduce=False)
 
-        estimation_errors = torch.cat([estimation_errors[idx].reshape(self.env.num_envs, -1) * self.env.cfg.rewards.estimation_bonus_weights[idx] for idx in range(len(estimation_errors))], dim=1)
-        
-        estimation_reward = torch.sum(estimation_errors, dim=1).to(self.env.device)
+        label_start_end = []
+        si = 0
+        for idx, length in enumerate(self.env.cfg.rewards.estimation_bonus_dims):
+            label_start_end += [(si, si + length)]
+            si = si + length
+
+        if len(self.env.cfg.rewards.estimation_bonus_dims) > 0:
+            estimation_reward = 0
+            for k, (dim, weight) in enumerate(zip(self.env.cfg.rewards.estimation_bonus_dims, self.env.cfg.rewards.estimation_bonus_weights)):
+                start, end = label_start_end[k]
+                selection_indices = torch.linspace(start, end - 1, steps=end - start, dtype=torch.long)
+                estimation_error = torch.sum(torch.square(estimate[:, selection_indices] - target[:, selection_indices]), dim=1).to(self.env.device) * weight
+                estimation_reward += estimation_error
+        else:
+            estimation_error = torch.square(estimate - self.env.privileged_obs_buf)
+            estimation_reward = torch.sum(estimation_error, dim=1).to(self.env.device)
 
         return estimation_reward
     
-    def _reward_foot_ext_force(self):
-        return torch.sum(torch.abs(self.env.feet_forces[:, :3]), dim=1)
+    def _reward_torque_clipping(self):
+        # torque_scales = self.env.ext_torque_limits / self.env.cfg.control.torque_scale
+        # reward = torch.mean(torch.clip(torque_scales, 0.0, 100.0), dim=-1)
+        
+        torque_scales = (self.env.ext_torque_limits - self.env.torques) / self.env.cfg.control.torque_scale
+        reward = torch.sum(torch.square(torque_scales), dim=-1)
+        
+        return reward
+        
+        

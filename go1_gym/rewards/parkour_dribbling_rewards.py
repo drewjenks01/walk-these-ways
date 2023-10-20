@@ -5,7 +5,7 @@ from isaacgym.torch_utils import *
 from isaacgym import gymapi
 from .rewards import Rewards
 
-class ParkourRewards(Rewards):
+class ParkourDribblingRewards(Rewards):
     def __init__(self, env):
         self.env = env
         self.actor_critic = None
@@ -15,11 +15,16 @@ class ParkourRewards(Rewards):
 
     # ------------ reward functions----------------
     def _reward_tracking_goal_vel(self):
-        # norm = torch.norm(self.target_pos_rel, dim=-1, keepdim=True)
-        # target_vec_norm = self.target_pos_rel / (norm + 1e-5)
-        # cur_vel = self.env.root_states[:, 7:9]
-        cur_vel = self.env.base_lin_vel[:, :1]
-        rew = torch.minimum(torch.sum(1.0 * cur_vel, dim=-1), self.env.commands[:, 0]) / (self.env.commands[:, 0] + 1e-5)
+        cur_vel = self.env.base_lin_vel[:, :2]
+
+        FR_shoulder_idx = self.env.gym.find_actor_rigid_body_handle(self.env.envs[0], self.env.robot_actor_handles[0], "FR_thigh_shoulder")
+        FR_HIP_positions = quat_rotate_inverse(self.env.base_quat, self.env.rigid_body_state.view(self.env.num_envs, -1, 13)[:,FR_shoulder_idx,0:3].view(self.env.num_envs,3)-self.env.base_pos)
+        robot_ball_vec = self.env.object_local_pos[:,0:2] - FR_HIP_positions[:,0:2]
+
+        robot_velocity_projection = torch.sum(cur_vel * robot_ball_vec, dim=1)
+
+        # rew = torch.minimum(torch.sum(1.0 * cur_vel, dim=-1), self.env.commands[:, 0]) / (self.env.commands[:, 0] + 1e-5)
+        rew = torch.minimum(robot_velocity_projection, self.env.commands[:, 0]) / (self.env.commands[:, 0] + 1e-5)
         return rew
 
     def _reward_tracking_yaw(self):

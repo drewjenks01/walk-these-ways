@@ -360,7 +360,7 @@ def train_go1(headless=True, **deps):
     Cfg.perception._update(deps)
 
     # create the environment
-    gpu_id = 3
+    gpu_id = 0
     env = VelocityTrackingEasyEnv(sim_device=f'cuda:{gpu_id}', headless=headless, cfg=Cfg)
     Args = namedtuple('args', ['exp', 'alpha', 'init_path', 'lmbd', 'min_vel', 'max_vel', 'num_vel_itvl', 'conditional'])
     exp = 'eipo_trkv_enrg'

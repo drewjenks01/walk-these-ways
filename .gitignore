@@ -77,3 +77,4 @@ tmp
 *.pth
 
 # exceptions
+!resources/robots/go1/urdf/go1_v2.urdf

@@ -158,18 +158,26 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
     curr_policy = constants.WALK_GAIT_NAME
     curr_policy_params = constants.WALK_GAIT_PARAMS
 
+    fps_timer = time.time()
+    init_img=True
+
     using_nn = False
     if model_name:
-        using_nn = True
-        navigator = get_models(navigator='vint', pretrained=True, topomap_folder='navigation/data/vint_topomaps/sim_maze')
+        models = get_models(navigator='vint', pretrained=True, topomap_folder='sim_maze')
+        navigator = models['navigator']
 
 
     while True:
         env.render()
-        rgb_imgs = env.get_rgb_images(env_ids = [0])
-        depth_imgs = env.get_depth_images(env_ids = [0])
-        rgb_img = rgb_imgs['forward']
-        depth_img = depth_imgs['forward']
+        
+        if fps_timer >= 1/constants.FPS or init_img:
+            rgb_imgs = env.get_rgb_images(env_ids = [0])
+            depth_imgs = env.get_depth_images(env_ids = [0])
+            rgb_img = rgb_imgs['forward']
+            depth_img = depth_imgs['forward']
+
+            if init_img:
+                init_img=False
 
         with torch.no_grad():
             if curr_policy == constants.WALK_GAIT_NAME:
@@ -252,16 +260,18 @@ def play_go1(demo_folder: str, demo_name: str, headless: bool, model_name: str):
             
 
         if using_nn:
-            outs = navigator(rgb_img)
+            outs = navigator(rgb_img.squeeze(0).detach().cpu().numpy().astype(np.uint8))
             controls['y_vel'] = outs['y_vel']
             controls['yaw'] = outs['yaw']
+
+            logging.info(f'y_vel: {controls["y_vel"]}, yaw: {controls["yaw"]}')
             
-            # TODO: add policy control
+            # TODO: add gait control
 
         if curr_policy != 'parkour':
-            env.commands[:, 0] = controls['y_vel']*1.5
+            env.commands[:, 0] = controls['y_vel']
             env.commands[:, 1] = 0.0
-            env.commands[:, 2] = controls['yaw']*1.5
+            env.commands[:, 2] = controls['yaw']
             env.commands[:, 3] = curr_policy_params['body_height_cmd']
             env.commands[:, 4] = curr_policy_params['step_frequency_cmd']
             env.commands[:, 5:8] = curr_policy_params['gait']

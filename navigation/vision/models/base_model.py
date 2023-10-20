@@ -18,7 +18,6 @@ class BaseModel(nn.Module):
     def forward(self, images):
         raise NotImplementedError
     
-    @staticmethod
     def transform_images(self, pil_imgs: List[PILImage.Image], image_size: List[int], center_crop: bool = False) -> torch.Tensor:
         """Transforms a list of PIL image to a torch tensor."""
         transform_type = transforms.Compose(
@@ -46,7 +45,7 @@ class BaseModel(nn.Module):
     
     def update_context_queue(self, pil_img):
         if len(self.context_queue) < constants.CONTEXT_SIZE + 1:
-            self.context_queue.append(self.obs_img)
+            self.context_queue.append(pil_img)
         else:
             self.context_queue.pop(0)
             self.context_queue.append(pil_img)
@@ -57,4 +56,4 @@ class BaseModel(nn.Module):
 
     @staticmethod
     def numpy_to_pil(numpy_img):
-        return PILImage.fromarray(numpy_img.astype(np.uint8))
+        return PILImage.fromarray(numpy_img)

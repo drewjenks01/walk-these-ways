@@ -2020,13 +2020,13 @@ class LeggedRobot(BaseTask):
     def get_rgb_images(self, env_ids):
         rgb_images = {}
         for camera_name in self.cfg.perception.camera_names:
-            rgb_images[camera_name] = self.camera_sensors[camera_name].get_rgb_images(env_ids)
+            rgb_images[camera_name] = self.camera_sensors[camera_name].get_rgb_images(env_ids)[:,:,:,:3]
         return rgb_images
 
     def get_depth_images(self, env_ids):
         depth_images = {}
         for camera_name in self.cfg.perception.camera_names:
-            depth_images[camera_name] = self.camera_sensors[camera_name].get_depth_images(env_ids)[0]
+            depth_images[camera_name] = self.camera_sensors[camera_name].get_depth_images(env_ids)
         return depth_images
     
     def normalize_depth_image(self, depth_image):

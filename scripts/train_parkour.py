@@ -152,6 +152,8 @@ def configure_env():
     # Roughness
     Cfg.domain_rand.randomize_tile_roughness = True
     Cfg.domain_rand.tile_roughness_range = [0.03, 0.08] # [0.02, 0.1]
+
+    Cfg.terrain.parkour = True
     Cfg.terrain.perlin_octaves = 5
     Cfg.terrain.perlin_lacunarity = 3.0
     Cfg.terrain.perlin_gain = 0.45

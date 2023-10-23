@@ -15,6 +15,7 @@ from go1_gym import MINI_GYM_ROOT_DIR
 from go1_gym.envs.base.base_task import BaseTask
 from go1_gym.utils.math_utils import quat_apply_yaw, wrap_to_pi, get_scale_shift
 from go1_gym.utils.terrain import Terrain, perlin
+from go1_gym.utils.parkour_terrain import Terrain as ParkourTerrain
 from .legged_robot_config import Cfg
 
 TRANSFORM_BASE_ARM_X = 0.2
@@ -749,7 +750,10 @@ class LeggedRobot(BaseTask):
         if mesh_type not in ALL_TERRAINS.keys():
             raise ValueError(f"Terrain mesh type {mesh_type} not recognised. Allowed types are {ALL_TERRAINS.keys()}")
         
-        self.terrain = Terrain(self.cfg.terrain, self.num_envs)
+        if self.cfg.terrain.parkour:
+            self.terrain = ParkourTerrain(self.cfg.terrain, self.num_envs)
+        else:
+            self.terrain = Terrain(self.cfg.terrain, self.num_envs)
         self.terrain_obj = ALL_TERRAINS[mesh_type](self)
 
         self._create_envs()

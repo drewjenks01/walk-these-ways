@@ -49,6 +49,7 @@ go1_gym/terrains/trimesh_terrain.py
 go1_gym/utils/__init__.py
 go1_gym/utils/logger.py
 go1_gym/utils/math_utils.py
+go1_gym/utils/parkour_terrain.py
 go1_gym/utils/terrain.py
 go1_gym_deploy/__init__.py
 go1_gym_deploy/setup.py

@@ -127,6 +127,7 @@ class Cfg(PrefixProto, cli=False):
         border_size = 0  # 25 # [m]
         curriculum = True
         generated = False
+        parkour = False
         static_friction = 1.0
         dynamic_friction = 1.0
         restitution = 0.0
@@ -170,6 +171,7 @@ class Cfg(PrefixProto, cli=False):
         perlin_octaves = 1
         perlin_lacunarity = 1
         perlin_gain = 1
+
 
     class commands(PrefixProto, cli=False):
 

@@ -33,7 +33,7 @@ from numpy.random import choice
 from scipy import interpolate
 import random
 from isaacgym import terrain_utils
-from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg
+from go1_gym.envs.base.legged_robot_config import Cfg as LeggedRobotCfg
 from scipy import ndimage
 from pydelatin import Delatin
 import pyfqmr
@@ -41,7 +41,7 @@ from scipy.ndimage import binary_dilation
 
 
 class Terrain:
-    def __init__(self, cfg: LeggedRobotCfg.terrain, num_robots) -> None:
+    def __init__(self, cfg: LeggedRobotCfg.parkour_terrain, num_robots) -> None:
         self.cfg = cfg
         self.num_robots = num_robots
         self.type = cfg.mesh_type

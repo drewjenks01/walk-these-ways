@@ -390,7 +390,7 @@ def train_go1(headless=True, **deps):
       "RunnerArgs": vars(RunnerArgs),
       "Cfg": vars(Cfg),
       },
-      mode="offline"
+      mode="online"
     )
 
     # train

@@ -10,6 +10,7 @@ from go1_gym_deploy.lcm_types.leg_control_data_lcmt import leg_control_data_lcmt
 from go1_gym_deploy.lcm_types.state_estimator_lcmt import state_estimator_lcmt
 from go1_gym_deploy.lcm_types.rc_command_lcmt import rc_command_lcmt
 from go1_gym_deploy.lcm_types.realsense_lcmt import realsense_lcmt
+from navigation.demo import demo_collector
 
 from navigation.demo.demo_collector import DemoCollector
 
@@ -29,7 +30,7 @@ class UnitreeNavigation:
         self.demo_collector = DemoCollector(demo_folder, demo_name)
 
         # control bools
-        self.using_nn = False
+        self.autonomous = False
 
         # start data relay
         self.spin()
@@ -45,30 +46,74 @@ class UnitreeNavigation:
             # if right bumper pressed while collecting demo
             # then end and label demo as 'bad'
             if self.right_lower_left_switch_pressed and self.demo_collector.currently_collecting:
-                pass
-                # TODO: hard reset with label
-
+                self.demo_collector.reset_demo(reset_current=True)
+                self.right_lower_left_switch_pressed = False
+                
             # if left bumper pressed, begin collecting demo
+            if self.left_lower_left_switch_pressed:
 
-            # get image data
+                # if currently recording, then stop
+                if self.demo_collector.currently_collecting:
+                    self.demo_collector.end_and_save_demo()
+
+                # if not currently recording, then start
+                elif not self.demo_collector.currently_collecting:
+                    self.demo_collector.start_collecting()
+
+                self.left_lower_left_switch_pressed = False
+
+
+            # get manual commands
+            comms = self.get_manual_commands()
+
+            # check for autonomy usage
+            self.check_for_autonomy()
+
+            # get vision data if using autonomous or recording a demo
+            if self.autonomous or self.demo_collector.currently_collecting:
+                pass
             
 
-
-            # use NN or manual controls
-            if self.using_nn:
-                # NN controls
-                pass
-            else:
-                # manual controls
-                pass
+            # override manual commands if using autonomy
+            if self.autonomous:
+                comms = self.get_autonomy_commands(comms)
+                
 
             # record data if collecting demo
             if self.demo_collector.currently_collecting:
-
+                pass
 
             
+        
+    def check_for_autonomy(self):
+        # left d-pad
+        if self.mode == 7:    # NN
+            logging.info('Autonomy: On')
+            self.autonomous=True
+        
+    def get_manual_commands(self):
+        # always in use
+        cmd_y = 1 * self.left_stick[1]
+        cmd_yaw = -1 * self.right_stick[0]
 
+        # right d-pad
+        if self.mode == 5:
+            self.policy=0    # walk
+
+        # up d-pad
+        elif self.mode == 4:
+            self.policy=1    # stair
+
+        # down d-pad
+        elif self.mode == 6:
+            self.policy= 2   # duck
     
+        comms = np.array([cmd_y, cmd_yaw, self.policy])
+
+        return comms
+    
+    def get_autonomy_commands(self, manual_comms):
+        pass
 
     def _init_controller_and_joint_values(self):
         # reverse legs

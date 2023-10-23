@@ -23,8 +23,7 @@ class DemoCollector:
 
         # create the demo run folder
         self.save_path = self.save_path_base / utils.make_run_label(self.run_count)
-        
-
+    
         # define inital partial run file
         self.run_image_count = 0
 

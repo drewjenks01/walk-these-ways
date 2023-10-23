@@ -158,16 +158,16 @@ def configure_env():
     Cfg.terrain.perlin_lacunarity = 3.0
     Cfg.terrain.perlin_gain = 0.45
 
-    Cfg.terrain.mesh_type = "boxes_tm" #originally "plane"
+    Cfg.terrain.mesh_type = "trimesh" #originally "plane"
     # Cfg.domain_rand.ground_friction_range = [2.0, 2.01] # originally 0 to 1
     # Cfg.domain_rand.ground_restitution_range = [0, 0.1] # originally 0 to 1
 
-    Cfg.terrain.border_size = 0.0
+    Cfg.terrain.border_size = 5
     # Cfg.terrain.mesh_type = "trimesh"
-    Cfg.terrain.num_cols = 14
-    Cfg.terrain.num_rows = 14
+    Cfg.terrain.num_cols = 40
+    Cfg.terrain.num_rows = 10
     Cfg.terrain.terrain_width = 4.0
-    Cfg.terrain.terrain_length = 4.0
+    Cfg.terrain.terrain_length = 18.0
     Cfg.terrain.x_init_range = 0.2
     Cfg.terrain.y_init_range = 0.2
     Cfg.terrain.teleport_thresh = 0.3
@@ -176,15 +176,24 @@ def configure_env():
     Cfg.terrain.center_span = 4
     Cfg.terrain.horizontal_scale = 0.05
     Cfg.terrain.vertical_scale = 0.005
-    Cfg.terrain.max_init_terrain_level = 0
+    Cfg.terrain.max_init_terrain_level = 5
     Cfg.terrain.num_border_boxes = 2
+    Cfg.terrain.static_friction = 1.0
+    Cfg.terrain.dynamic_friction = 1.0
+    Cfg.terrain.restitution = 0.0
+    Cfg.terrain.measure_heights = True
+    Cfg.terrain.slope_treshold = 1.5
+    Cfg.terrain.selected = False
+    Cfg.terrain.terrain_kwargs = None
+    Cfg.terrain.max_init_terrain_level = 5
+    Cfg.terrain.terrain_proportions = list(Cfg.terrain.terrain_dict.values())
 
-    Cfg.terrain.curriculum = False
+    Cfg.terrain.curriculum = True
     Cfg.terrain.terrain_proportions = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     Cfg.terrain.max_step_height = 0.16
     Cfg.terrain.min_step_height = 0.02
     Cfg.terrain.min_init_terrain_level = 0
-    Cfg.terrain.max_init_terrain_level = 0
+    Cfg.terrain.max_init_terrain_level = 5
     Cfg.terrain.platform_size = 0.7
     Cfg.terrain.difficulty_scale = 0.4
 

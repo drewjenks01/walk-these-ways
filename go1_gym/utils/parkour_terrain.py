@@ -41,7 +41,7 @@ from scipy.ndimage import binary_dilation
 
 
 class Terrain:
-    def __init__(self, cfg: LeggedRobotCfg.parkour_terrain, num_robots) -> None:
+    def __init__(self, cfg: LeggedRobotCfg.terrain, num_robots) -> None:
         self.cfg = cfg
         self.num_robots = num_robots
         self.type = cfg.mesh_type
@@ -155,6 +155,7 @@ class Terrain:
                                 length=self.width_per_env_pixels,
                                 vertical_scale=self.cfg.vertical_scale,
                                 horizontal_scale=self.cfg.horizontal_scale)
+        terrain.goals = np.zeros((self.cfg.num_rows, self.cfg.num_cols, self.cfg.num_goals, 3))
         slope = difficulty * 0.4
         step_height = 0.02 + 0.14 * difficulty
         discrete_obstacles_height = 0.03 + difficulty * 0.15

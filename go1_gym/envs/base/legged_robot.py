@@ -2278,19 +2278,19 @@ class LeggedRobot(BaseTask):
 
         # create objects
 
-        from go1_gym.assets.ball import Ball
-        from go1_gym.assets.cube import Cube
-        from go1_gym.assets.door import Door
-        from go1_gym.assets.chair import Chair
-        from go1_gym.assets.bucket_of_balls import BallBucket
+        # from go1_gym.assets.ball import Ball
+        # from go1_gym.assets.cube import Cube
+        # from go1_gym.assets.door import Door
+        # from go1_gym.assets.chair import Chair
+        # from go1_gym.assets.bucket_of_balls import BallBucket
 
-        asset_classes = {
-            "ball": Ball,
-            "cube": Cube,
-            "door": Door,
-            "chair": Chair,
-            "ballbucket": BallBucket,
-        }
+        # asset_classes = {
+        #     "ball": Ball,
+        #     "cube": Cube,
+        #     "door": Door,
+        #     "chair": Chair,
+        #     "ballbucket": BallBucket,
+        # }
 
         if self.cfg.env.add_objects:
             # if there is a list of assets

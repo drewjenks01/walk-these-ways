@@ -126,6 +126,7 @@ class Cfg(PrefixProto, cli=False):
         vertical_scale = 0.005  # [m]
         border_size = 0  # 25 # [m]
         curriculum = True
+        generated = False
         static_friction = 1.0
         dynamic_friction = 1.0
         restitution = 0.0

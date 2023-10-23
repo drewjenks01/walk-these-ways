@@ -75,6 +75,5 @@ tmp
 *.obj
 *.jpg
 *.pth
-
+wandb/*
 # exceptions
-!resources/robots/go1/urdf/go1_v2.urdf

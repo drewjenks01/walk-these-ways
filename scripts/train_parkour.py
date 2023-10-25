@@ -24,7 +24,7 @@ def configure_env():
 
     config_go1(Cfg)
 
-    Cfg.env.num_envs = 4000
+    Cfg.env.num_envs = 1000
     Cfg.robot.name = "go1"
     Cfg.sensors.sensor_names = [
                         "OrientationSensor",
@@ -162,7 +162,7 @@ def configure_env():
     # Cfg.domain_rand.ground_friction_range = [2.0, 2.01] # originally 0 to 1
     # Cfg.domain_rand.ground_restitution_range = [0, 0.1] # originally 0 to 1
 
-    Cfg.terrain.border_size = 5
+    Cfg.terrain.border_size = 25
     # Cfg.terrain.mesh_type = "trimesh"
     Cfg.terrain.num_cols = 40
     Cfg.terrain.num_rows = 10
@@ -189,7 +189,6 @@ def configure_env():
     Cfg.terrain.terrain_proportions = list(Cfg.terrain.terrain_dict.values())
 
     Cfg.terrain.curriculum = True
-    Cfg.terrain.terrain_proportions = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     Cfg.terrain.max_step_height = 0.16
     Cfg.terrain.min_step_height = 0.02
     Cfg.terrain.min_init_terrain_level = 0

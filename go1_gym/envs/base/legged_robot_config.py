@@ -173,7 +173,7 @@ class Cfg(PrefixProto, cli=False):
         perlin_gain = 1
 
         # parkour specifics
-        h2fmesh_mthod = "grid"  # grid or fast
+        hf2mesh_method = "grid"  # grid or fast
         max_error = 0.1 # for fast
         max_error_camera = 2
         y_range = [-0.4, 0.4]

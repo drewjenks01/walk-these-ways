@@ -11,6 +11,7 @@ class TrimeshTerrain(Terrain):
     def prepare(self):
         """ Adds a triangle mesh terrain to the simulation, sets parameters based on the cfg.
         # """
+        print('preparing trimesh...')
         tm_params = gymapi.TriangleMeshParams()
         tm_params.nb_vertices = self.env.terrain.vertices.shape[0]
         tm_params.nb_triangles = self.env.terrain.triangles.shape[0]
@@ -23,8 +24,10 @@ class TrimeshTerrain(Terrain):
         tm_params.restitution = self.env.cfg.terrain.restitution
         self.env.gym.add_triangle_mesh(self.env.sim, self.env.terrain.vertices.flatten(order='C'),
                                    self.env.terrain.triangles.flatten(order='C'), tm_params)
+        print('Trimesh added')
         self.height_samples = torch.tensor(self.env.terrain.heightsamples).view(self.env.terrain.tot_rows,
                                                                             self.env.terrain.tot_cols).to(self.env.device)
+        self.x_edge_mask = torch.tensor(self.env.terrain.x_edge_mask).view(self.env.terrain.tot_rows, self.env.terrain.tot_cols).to(self.env.devic)
 
 
     def initialize(self):

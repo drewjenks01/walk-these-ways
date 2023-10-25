@@ -49,7 +49,7 @@ class Terrain:
             return
         self.env_length = cfg.terrain_length
         self.env_width = cfg.terrain_width
-
+        
         cfg.terrain_proportions = np.array(cfg.terrain_proportions) / np.sum(cfg.terrain_proportions)
         self.proportions = [np.sum(cfg.terrain_proportions[:i+1]) for i in range(len(cfg.terrain_proportions))]
         self.cfg.num_sub_terrains = cfg.num_rows * cfg.num_cols
@@ -155,7 +155,6 @@ class Terrain:
                                 length=self.width_per_env_pixels,
                                 vertical_scale=self.cfg.vertical_scale,
                                 horizontal_scale=self.cfg.horizontal_scale)
-        terrain.goals = np.zeros((self.cfg.num_rows, self.cfg.num_cols, self.cfg.num_goals, 3))
         slope = difficulty * 0.4
         step_height = 0.02 + 0.14 * difficulty
         discrete_obstacles_height = 0.03 + difficulty * 0.15
@@ -322,8 +321,6 @@ class Terrain:
             idx = 20
             demo_terrain(terrain)
             self.add_roughness(terrain)
-        # np.set_printoptions(precision=2)
-        # print(np.array(self.proportions), choice)
         terrain.idx = idx
         return terrain
 

@@ -754,6 +754,7 @@ class LeggedRobot(BaseTask):
             self.terrain = ParkourTerrain(self.cfg.terrain, self.num_envs)
         else:
             self.terrain = Terrain(self.cfg.terrain, self.num_envs)
+            
         self.terrain_obj = ALL_TERRAINS[mesh_type](self)
 
         self._create_envs()

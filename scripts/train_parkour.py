@@ -158,44 +158,44 @@ def configure_env():
     Cfg.terrain.perlin_lacunarity = 3.0
     Cfg.terrain.perlin_gain = 0.45
 
-    Cfg.terrain.mesh_type = "trimesh" #originally "plane"
-    # Cfg.domain_rand.ground_friction_range = [2.0, 2.01] # originally 0 to 1
-    # Cfg.domain_rand.ground_restitution_range = [0, 0.1] # originally 0 to 1
-
-    Cfg.terrain.border_size = 5
-    # Cfg.terrain.mesh_type = "trimesh"
-    Cfg.terrain.num_cols = 40
-    Cfg.terrain.num_rows = 10
-    Cfg.terrain.terrain_width = 4.0
-    Cfg.terrain.terrain_length = 18.0
-    Cfg.terrain.x_init_range = 0.2
-    Cfg.terrain.y_init_range = 0.2
-    Cfg.terrain.teleport_thresh = 0.3
-    Cfg.terrain.teleport_robots = False
-    Cfg.terrain.center_robots = False
-    Cfg.terrain.center_span = 4
-    Cfg.terrain.horizontal_scale = 0.05
-    Cfg.terrain.vertical_scale = 0.005
-    Cfg.terrain.max_init_terrain_level = 5
-    Cfg.terrain.num_border_boxes = 2
+    Cfg.terrain.mesh_type = 'trimesh' # "heightfield" # none, plane, heightfield or trimesh
+    Cfg.terrain.horizontal_scale = 0.05 # [m]
+    Cfg.terrain.vertical_scale = 0.005 # [m]
+    Cfg.terrain.border_size = 25 # [m]
+    Cfg.terrain.height = [0.03, 0.05]
+    # height = [0.00, 0.00]
+    Cfg.terrain.gap_size = [0.15, 0.20]
+    Cfg.terrain.stepping_stone_distance = [0.05, 0.1]
+    Cfg.terrain.downsampled_scale = 0.05
+    Cfg.terrain.curriculum = False
     Cfg.terrain.static_friction = 1.0
     Cfg.terrain.dynamic_friction = 1.0
-    Cfg.terrain.restitution = 0.0
+    Cfg.terrain.restitution = 0.
+    # rough terrain only:
     Cfg.terrain.measure_heights = True
-    Cfg.terrain.slope_treshold = 1.5
-    Cfg.terrain.selected = False
-    Cfg.terrain.terrain_kwargs = None
-    Cfg.terrain.max_init_terrain_level = 5
-    Cfg.terrain.terrain_proportions = list(Cfg.terrain.terrain_dict.values())
-
-    Cfg.terrain.curriculum = True
-    Cfg.terrain.terrain_proportions = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    Cfg.terrain.max_step_height = 0.16
-    Cfg.terrain.min_step_height = 0.02
-    Cfg.terrain.min_init_terrain_level = 0
-    Cfg.terrain.max_init_terrain_level = 5
-    Cfg.terrain.platform_size = 0.7
-    Cfg.terrain.difficulty_scale = 0.4
+    Cfg.terrain.measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] # 1mx1.6m rectangle (without center line)
+    Cfg.terrain.measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
+    # measured_points_x = [-0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8]
+    # measured_points_y = [-0.4, -0.2, 0., 0.2, 0.4]
+    Cfg.terrain.selected = False # select a unique terrain type and pass all arguments
+    Cfg.terrain.terrain_kwargs = None # Dict of arguments for selected terrain
+    Cfg.terrain.max_init_terrain_level = 5 # starting curriculum state
+    Cfg.terrain.terrain_length = 8.
+    Cfg.terrain.terrain_width = 8.
+    Cfg.terrain.num_rows= 10 # number of terrain rows (levels)
+    Cfg.terrain.num_cols = 20 # number of terrain cols (types)
+    # terrain types: [smooth slope, 
+    #                 rough slope, 
+    #                 rough stairs up, 
+    #                 rough stairs down, 
+    #                 discrete, 
+    #                 stepping stones
+    #                 gaps, 
+    #                 smooth flat]
+    Cfg.terrain.terrain_proportions = [0.0, 0.15, 0.2, 0.15, 0.0, 0.0, 0.4, 0.1]
+    # terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    # trimesh only:
+    Cfg.terrain.slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
 
     # Cfg.terrain.curriculum = False
     # Cfg.terrain.terrain_proportions = [0.4, 0.2, 0.2, 0.0, 0.0, 0.2, 0.0]

@@ -76,4 +76,6 @@ tmp
 *.jpg
 *.pth
 wandb/*
+*.jit
+*.pt
 # exceptions

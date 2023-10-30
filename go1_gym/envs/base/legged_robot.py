@@ -754,7 +754,7 @@ class LeggedRobot(BaseTask):
             self.terrain = ParkourTerrain(self.cfg.terrain, self.num_envs)
         else:
             self.terrain = Terrain(self.cfg.terrain, self.num_envs)
-            
+
         self.terrain_obj = ALL_TERRAINS[mesh_type](self)
 
         self._create_envs()
@@ -1492,14 +1492,14 @@ class LeggedRobot(BaseTask):
         if self.custom_origins:
             self.root_states[robot_env_ids] = self.base_init_state
             self.root_states[robot_env_ids, :3] += self.env_origins[env_ids]
-            self.root_states[robot_env_ids, 0:1] += torch_rand_float(-cfg.terrain.x_init_range,
-                                                               cfg.terrain.x_init_range, (len(robot_env_ids), 1),
-                                                               device=self.device)
-            self.root_states[robot_env_ids, 1:2] += torch_rand_float(-cfg.terrain.y_init_range,
-                                                               cfg.terrain.y_init_range, (len(robot_env_ids), 1),
-                                                               device=self.device)
-            self.root_states[robot_env_ids, 0] += cfg.terrain.x_init_offset
-            self.root_states[robot_env_ids, 1] += cfg.terrain.y_init_offset
+            # self.root_states[robot_env_ids, 0:1] += torch_rand_float(-cfg.terrain.x_init_range,
+            #                                                    cfg.terrain.x_init_range, (len(robot_env_ids), 1),
+            #                                                    device=self.device)
+            # self.root_states[robot_env_ids, 1:2] += torch_rand_float(-cfg.terrain.y_init_range,
+            #                                                    cfg.terrain.y_init_range, (len(robot_env_ids), 1),
+            #                                                    device=self.device)
+            # self.root_states[robot_env_ids, 0] += cfg.terrain.x_init_offset
+            # self.root_states[robot_env_ids, 1] += cfg.terrain.y_init_offset
         else:
             self.root_states[robot_env_ids] = self.base_init_state
             self.root_states[robot_env_ids, :3] += self.env_origins[env_ids]
@@ -1513,9 +1513,9 @@ class LeggedRobot(BaseTask):
         # print(quat.shape)
         # self.root_states[robot_env_ids, 3:7] = quat
         
-        random_yaw_angle = 2*(torch.rand(len(env_ids), 3, dtype=torch.float, device=self.device,
-                                                     requires_grad=False)-0.5)*torch.tensor([0, 0, cfg.terrain.yaw_init_range], device=self.device)
-        self.root_states[robot_env_ids,3:7] = quat_from_euler_xyz(random_yaw_angle[:,0], random_yaw_angle[:,1], random_yaw_angle[:,2])
+        # random_yaw_angle = 2*(torch.rand(len(env_ids), 3, dtype=torch.float, device=self.device,
+        #                                              requires_grad=False)-0.5)*torch.tensor([0, 0, cfg.terrain.yaw_init_range], device=self.device)
+        # self.root_states[robot_env_ids,3:7] = quat_from_euler_xyz(random_yaw_angle[:,0], random_yaw_angle[:,1], random_yaw_angle[:,2])
             
 
         if self.cfg.env.offset_yaw_obs:
@@ -2343,6 +2343,7 @@ class LeggedRobot(BaseTask):
         start_pose.p = gymapi.Vec3(*self.base_init_state[:3])
 
         self.env_origins = torch.zeros(self.num_envs, 3, device=self.device, requires_grad=False)
+        self.env_class = torch.zeros(self.num_envs, device=self.device, requires_grad=False)
         self.terrain_levels = torch.zeros(self.num_envs, device=self.device, requires_grad=False, dtype=torch.long)
         self.terrain_origins = torch.zeros(self.num_envs, 3, device=self.device, requires_grad=False)
         self.terrain_types = torch.zeros(self.num_envs, device=self.device, requires_grad=False, dtype=torch.long)
@@ -2534,9 +2535,18 @@ class LeggedRobot(BaseTask):
                                                     (len(env_ids) / cfg.terrain.num_cols), rounding_mode='floor').to(
                     torch.long)
             cfg.terrain.max_terrain_level = cfg.terrain.num_rows
+            self.max_terrain_level = cfg.terrain.num_rows
+            self.min_terrain_level = cfg.terrain.num_border_boxes
             cfg.terrain.terrain_origins = torch.from_numpy(cfg.terrain.env_origins).to(self.device).to(torch.float)
             self.env_origins[env_ids] = cfg.terrain.terrain_origins[
                 self.terrain_levels[env_ids], self.terrain_types[env_ids]]
+            
+            # parkour specific
+            self.terrain_class = torch.from_numpy(self.terrain.terrain_type).to(self.device).to(torch.float)
+            self.env_class[:] = self.terrain_class[self.terrain_levels, self.terrain_types]
+            self.terrain_goals = torch.from_numpy(self.terrain.goals).to(self.device).to(torch.float)
+
+
         elif cfg.terrain.mesh_type in ["boxes", "boxes_tm"]:
             self.custom_origins = True
             # put robots at the origins defined by the terrain

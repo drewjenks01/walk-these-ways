@@ -121,36 +121,44 @@ class Cfg(PrefixProto, cli=False):
         
 
     class terrain(PrefixProto, cli=False):
+        
+        # misc
+        generated = False
+        parkour = False
+
+        # shared
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
         horizontal_scale = 0.1  # [m]
         vertical_scale = 0.005  # [m]
         border_size = 0  # 25 # [m]
         curriculum = True
-        generated = False
-        parkour = False
         static_friction = 1.0
         dynamic_friction = 1.0
         restitution = 0.0
-        terrain_noise_magnitude = 0.1
-        # rough terrain only:
-        terrain_smoothness = 0.005
-        # measure_heights = True
-        # 1mx1.6m rectangle (without center line)
-        # measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
-        # measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
+        slope_treshold = 1.5  # slopes above this threshold will be corrected to vertical surfaces
         selected = False  # select a unique terrain type and pass all arguments
         terrain_kwargs = None  # Dict of arguments for selected terrain
-        min_init_terrain_level = 0
+        # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
+        terrain_proportions = [0.1, 0.1, 0.35, 0.25, 0.2]
         max_init_terrain_level = 5  # starting curriculum state
         terrain_length = 8.
         terrain_width = 8.
         num_rows = 10  # number of terrain rows (levels)
         num_cols = 20  # number of terrain cols (types)
+        measure_heights = True
+        #1mx1.6m rectangle (without center line)
+        measured_points_x = [-0.45, -0.3, -0.15, 0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.05, 1.2] # 1mx1.6m rectangle (without center line)
+        measured_points_y = [-0.75, -0.6, -0.45, -0.3, -0.15, 0., 0.15, 0.3, 0.45, 0.6, 0.75]
+
+
+        # wtw specific
+        terrain_noise_magnitude = 0.1
+        # rough terrain only:
+        terrain_smoothness = 0.005
+        min_init_terrain_level = 0
         num_border_boxes = 0
-        # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
-        terrain_proportions = [0.1, 0.1, 0.35, 0.25, 0.2]
+        
         # trimesh only:
-        slope_treshold = 1.5  # slopes above this threshold will be corrected to vertical surfaces
         difficulty_scale = 1.
         x_init_range = 1.
         y_init_range = 1.
@@ -186,10 +194,7 @@ class Cfg(PrefixProto, cli=False):
         downsampled_scale = 0.075
         all_vertical = False
         no_flat = True
-        measure_heights = True
-        #1mx1.6m rectangle (without center line)
-        measured_points_x = [-0.45, -0.3, -0.15, 0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.05, 1.2] # 1mx1.6m rectangle (without center line)
-        measured_points_y = [-0.75, -0.6, -0.45, -0.3, -0.15, 0., 0.15, 0.3, 0.45, 0.6, 0.75]
+        
         measure_horizontal_noise = 0.0
         terrain_dict = {"smooth slope": 0., 
                         "rough slope up": 0.0,

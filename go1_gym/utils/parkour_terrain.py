@@ -47,20 +47,19 @@ class Terrain:
         self.type = cfg.mesh_type
         if self.type in ["none", 'plane']:
             return
-        self.env_length = cfg.terrain_length
+        self.cfg.env_length = cfg.terrain_length
         self.env_width = cfg.terrain_width
-        
         cfg.terrain_proportions = np.array(cfg.terrain_proportions) / np.sum(cfg.terrain_proportions)
         self.proportions = [np.sum(cfg.terrain_proportions[:i+1]) for i in range(len(cfg.terrain_proportions))]
         self.cfg.num_sub_terrains = cfg.num_rows * cfg.num_cols
-        self.env_origins = np.zeros((cfg.num_rows, cfg.num_cols, 3))
+        self.cfg.env_origins = np.zeros((cfg.num_rows, cfg.num_cols, 3))
         self.terrain_type = np.zeros((cfg.num_rows, cfg.num_cols))
         # self.env_slope_vec = np.zeros((cfg.num_rows, cfg.num_cols, 3))
         self.goals = np.zeros((cfg.num_rows, cfg.num_cols, cfg.num_goals, 3))
         self.num_goals = cfg.num_goals
 
         self.width_per_env_pixels = int(self.env_width / cfg.horizontal_scale)
-        self.length_per_env_pixels = int(self.env_length / cfg.horizontal_scale)
+        self.length_per_env_pixels = int(self.cfg.env_length / cfg.horizontal_scale)
 
         self.border = int(cfg.border_size/self.cfg.horizontal_scale)
         self.tot_cols = int(cfg.num_cols * self.width_per_env_pixels) + 2 * self.border
@@ -334,20 +333,20 @@ class Terrain:
         end_y = self.border + (j + 1) * self.width_per_env_pixels
         self.height_field_raw[start_x: end_x, start_y:end_y] = terrain.height_field_raw
 
-        # env_origin_x = (i + 0.5) * self.env_length
-        env_origin_x = i * self.env_length + 1.0
+        # env_origin_x = (i + 0.5) * self.cfg.env_length
+        env_origin_x = i * self.cfg.env_length + 1.0
         env_origin_y = (j + 0.5) * self.env_width
-        x1 = int((self.env_length/2. - 0.5) / terrain.horizontal_scale) # within 1 meter square range
-        x2 = int((self.env_length/2. + 0.5) / terrain.horizontal_scale)
+        x1 = int((self.cfg.env_length/2. - 0.5) / terrain.horizontal_scale) # within 1 meter square range
+        x2 = int((self.cfg.env_length/2. + 0.5) / terrain.horizontal_scale)
         y1 = int((self.env_width/2. - 0.5) / terrain.horizontal_scale)
         y2 = int((self.env_width/2. + 0.5) / terrain.horizontal_scale)
         if self.cfg.origin_zero_z:
             env_origin_z = 0
         else:
             env_origin_z = np.max(terrain.height_field_raw[x1:x2, y1:y2])*terrain.vertical_scale
-        self.env_origins[i, j] = [env_origin_x, env_origin_y, env_origin_z]
+        self.cfg.env_origins[i, j] = [env_origin_x, env_origin_y, env_origin_z]
         self.terrain_type[i, j] = terrain.idx
-        self.goals[i, j, :, :2] = terrain.goals + [i * self.env_length, j * self.env_width]
+        self.goals[i, j, :, :2] = terrain.goals + [i * self.cfg.env_length, j * self.env_width]
         # self.env_slope_vec[i, j] = terrain.slope_vector
 
 def gap_terrain(terrain, gap_size, platform_size=1.):

@@ -1245,7 +1245,9 @@ class LeggedRobot(BaseTask):
         props[0].mass = self.default_body_mass + self.payloads[env_id]
         props[0].com = gymapi.Vec3(self.com_displacements[env_id, 0], self.com_displacements[env_id, 1],
                                    self.com_displacements[env_id, 2])
-        return props
+        
+        mass_params = np.concatenate(props[0].mass. props[0].com)
+        return props, mass_params
 
     def _post_physics_step_callback(self):
         """ Callback called before computing terminations, rewards, and observations
@@ -2531,13 +2533,13 @@ class LeggedRobot(BaseTask):
             dof_props = self._process_dof_props(dof_props_asset, i)
             self.gym.set_actor_dof_properties(env_handle, robot_handle, dof_props)
             body_props = self.gym.get_actor_rigid_body_properties(env_handle, robot_handle)
-            body_props = self._process_rigid_body_props(body_props, i)
+            body_props, mass_params = self._process_rigid_body_props(body_props, i)
             self.gym.set_actor_rigid_body_properties(env_handle, robot_handle, body_props, recomputeInertia=True)
             
             self.robot_actor_handles.append(robot_handle)
             self.robot_actor_idxs.append(self.gym.get_actor_index(env_handle, robot_handle, gymapi.DOMAIN_SIM))
 
-            self.mass_params_tensor[i, :] = torch.from_numpy(body_props.mass).to(self.device).to(torch.float)
+            self.mass_params_tensor[i, :] = torch.from_numpy(mass_params).to(self.device).to(torch.float)
 
             # add objects
             if self.cfg.env.add_objects:

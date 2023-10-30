@@ -492,7 +492,7 @@ class LeggedRobot(BaseTask):
         self.reset_buf |= roll_cutoff
         self.reset_buf |= pitch_cutoff
         self.reset_buf |= height_cutoff
-        
+
         # self.contact_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1.,
         #                            dim=1)
 
@@ -2124,6 +2124,9 @@ class LeggedRobot(BaseTask):
 
         # parkour
         self.reach_goal_timer = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+        self.action_history_buf = torch.zeros(self.num_envs, self.cfg.domain_rand.action_buf_len, self.num_dofs, device=self.device, dtype=torch.float)
+        self.contact_buf = torch.zeros(self.num_envs, self.cfg.env.contact_buf_len, 4, device=self.device, dtype=torch.float)
+
 
     def randomize_ep_len_buf(self):
         self.episode_length_buf = torch.randint_like(self.episode_length_buf,

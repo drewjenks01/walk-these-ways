@@ -1,0 +1,3 @@
+[submodule "navigation/vision/models/minigpt4"]
+	path = navigation/vision/models/minigpt4
+	url = https://github.com/Vision-CAIR/MiniGPT-4.git

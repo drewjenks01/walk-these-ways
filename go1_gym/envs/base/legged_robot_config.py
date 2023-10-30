@@ -78,6 +78,12 @@ class Cfg(PrefixProto, cli=False):
         # priv_observe_desired_contact_states = False
         # priv_observe_motion = False
         # priv_observe_dummy_variable = False
+        
+        # parkour
+        num_future_goal_obs = 2
+        reach_goal_delay = 0.1
+        next_goal_threshold = 0.2
+        contact_buf_len = 100
 
     class robot(PrefixProto, cli=False):
         name = "go1"
@@ -474,6 +480,14 @@ class Cfg(PrefixProto, cli=False):
         foot_force_kp = 20.
         foot_force_kd = 1.
         max_foot_force = 30.
+
+        # parkour
+        delay_update_global_steps = 24 * 8000
+        action_delay = False
+        action_curr_step = [1, 1]
+        action_curr_step_scratch = [0, 1]
+        action_delay_view = 1
+        action_buf_len = 8
 
     class rewards(PrefixProto, cli=False):
         only_positive_rewards = True  # if true negative total rewards are clipped at zero (avoids early termination problems)

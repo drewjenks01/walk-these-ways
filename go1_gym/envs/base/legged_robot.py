@@ -26,6 +26,28 @@ INDEX_EE_POS_PITCH_CMD = 16
 INDEX_EE_POS_YAW_CMD = 17
 INDEX_EE_POS_TIMING_CMD = 18
 
+def euler_from_quaternion(quat_angle):
+    """
+    Convert a quaternion into euler angles (roll, pitch, yaw)
+    roll is rotation around x in radians (counterclockwise)
+    pitch is rotation around y in radians (counterclockwise)
+    yaw is rotation around z in radians (counterclockwise)
+    """
+    x = quat_angle[:,0]; y = quat_angle[:,1]; z = quat_angle[:,2]; w = quat_angle[:,3]
+    t0 = +2.0 * (w * x + y * z)
+    t1 = +1.0 - 2.0 * (x * x + y * y)
+    roll_x = torch.atan2(t0, t1)
+    
+    t2 = +2.0 * (w * y - z * x)
+    t2 = torch.clip(t2, -1, 1)
+    pitch_y = torch.asin(t2)
+    
+    t3 = +2.0 * (w * z + x * y)
+    t4 = +1.0 - 2.0 * (y * y + z * z)
+    yaw_z = torch.atan2(t3, t4)
+    
+    return roll_x, pitch_y, yaw_z # in radians
+
 class LeggedRobot(BaseTask):
     def __init__(self, cfg: Cfg, sim_params, physics_engine, sim_device, headless,
                  initial_dynamics_dict=None, terrain_props=None, custom_heightmap=None):
@@ -65,6 +87,7 @@ class LeggedRobot(BaseTask):
         self.record_now = False
         self.collecting_evaluation = False
         self.num_still_evaluating = 0
+        self.global_counter = 0 # parkour
         
         self.torques_substeps_list = []
         self.velocities_substeps_list = []
@@ -94,6 +117,18 @@ class LeggedRobot(BaseTask):
         Args:
             actions (torch.Tensor): Tensor of shape (num_envs, num_actions_per_env)
         """
+        self.action_history_buf = torch.cat([self.action_history_buf[:, 1:].clone(), actions[:, None, :].clone()], dim=1)
+        if self.cfg.domain_rand.action_delay:
+            if self.global_counter % self.cfg.domain_rand.delay_update_global_steps == 0:
+                if len(self.cfg.domain_rand.action_curr_step) != 0:
+                    self.delay = torch.tensor(self.cfg.domain_rand.action_curr_step.pop(0), device=self.device, dtype=torch.float)
+            if self.viewer:
+                self.delay = torch.tensor(self.cfg.domain_rand.action_delay_view, device=self.device, dtype=torch.float)
+            indices = -self.delay -1
+            actions = self.action_history_buf[:, indices.long()] # delay for 1/50=20ms
+
+        self.global_counter += 1
+
         clip_actions = self.cfg.normalization.clip_actions
         self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
         # step physics and render each frame
@@ -173,6 +208,25 @@ class LeggedRobot(BaseTask):
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
         return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras
 
+    def _update_goals(self):
+        next_flag = self.reach_goal_timer > self.cfg.env.reach_goal_delay / self.dt
+        self.cur_goal_idx[next_flag] += 1
+        self.reach_goal_timer[next_flag] = 0
+
+        self.reached_goal_ids = torch.norm(self.root_states[:, :2] - self.cur_goals[:, :2], dim=1) < self.cfg.env.next_goal_threshold
+        self.reach_goal_timer[self.reached_goal_ids] += 1
+
+        self.target_pos_rel = self.cur_goals[:, :2] - self.root_states[:, :2]
+        self.next_target_pos_rel = self.next_goals[:, :2] - self.root_states[:, :2]
+
+        norm = torch.norm(self.target_pos_rel, dim=-1, keepdim=True)
+        target_vec_norm = self.target_pos_rel / (norm + 1e-5)
+        self.target_yaw = torch.atan2(target_vec_norm[:, 1], target_vec_norm[:, 0])
+
+        norm = torch.norm(self.next_target_pos_rel, dim=-1, keepdim=True)
+        target_vec_norm = self.next_target_pos_rel / (norm + 1e-5)
+        self.next_target_yaw = torch.atan2(target_vec_norm[:, 1], target_vec_norm[:, 0])
+    
     def post_physics_step(self):
         """ check terminations, compute observations and rewards
             calls self._post_physics_step_callback() for common computations 
@@ -243,6 +297,13 @@ class LeggedRobot(BaseTask):
             self.object_ang_vel = self.asset.get_ang_vel()
         # print("object linear velocity: ", self.object_lin_vel)
 
+        # parkour
+        self.roll, self.pitch, self.yaw = euler_from_quaternion(self.base_quat)
+        contact = torch.norm(self.contact_forces[:, self.feet_indices], dim=-1) > 2.
+        self.contact_filt = torch.logical_or(contact, self.last_contacts) 
+        self.last_contacts = contact
+        self._update_goals() 
+
         self._post_physics_step_callback()
 
         # # update the diff history
@@ -259,6 +320,11 @@ class LeggedRobot(BaseTask):
         # self.finalize_reward()
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
         self.reset_idx(env_ids)
+
+        # parkour
+        self.cur_goals = self._gather_cur_goals()
+        self.next_goals = self._gather_cur_goals(future=1)
+
         self.compute_observations()
 
         if "z1" in self.cfg.robot.name:
@@ -273,6 +339,10 @@ class LeggedRobot(BaseTask):
         self.last_root_vel[:] = self.root_states[self.robot_actor_idxs, 7:13]
 
         self._render_headless()
+
+        # parkour
+        if self.viewer:
+            self._draw_goals()
 
 
     def get_measured_ee_pos_spherical(self) -> torch.Tensor:
@@ -700,41 +770,98 @@ class LeggedRobot(BaseTask):
     def compute_observations(self):
         """ Computes observations
         """
-        # aggregate the sensor data
-        self.pre_obs_buf = []
-        for sensor in self.sensors:
-            obs_tmp = sensor.get_observation()
-            # if sensor.name == "JointPositionSensor" or sensor.name == "JointVelocitySensor":
-            #     obs_tmp[:, -1]=0
-            self.pre_obs_buf += [obs_tmp]
-            # print("sensor type: ", sensor) #, " observation: ", obs_tmp)
+        if self.cfg.terrain.parkour:
+            imu_obs = torch.stack((self.roll, self.pitch), dim=1)
+            if self.global_counter % 5 == 0:
+                self.delta_yaw = self.target_yaw - self.yaw
+                self.delta_next_yaw = self.next_target_yaw - self.yaw
+            obs_buf = torch.cat((
+                self.base_ang_vel * self.obs_scales.ang_vel,
+                imu_obs,
+                0*self.delta_yaw[:, None],
+                self.delta_yaw[:, None],
+                self.delta_next_yaw[:, None],
+                0*self.commands[:, 0:2],
+                self.commands[:, 0:1],
+                (self.env_class != 17).float()[:, None],
+                (self.env_class == 17).float()[:, None],
+
+                # TODO: seld.default_actuated_dof_pos might be different
+                (self.dof_pos - self.default_actuated_dof_pos)* self.obs_scales.dof_pos,
+                self.dof_vel * self.obs_scales.dof_vel,
+                self.action_history_buf[:, -1],
+                self.contact_filt.float()-0.5
+            ), dim=-1)
+            priv_explicit = torch.cat((self.base_lin_vel * self.obs_scales.lin_vel,
+                                    0 * self.base_lin_vel,
+                                    0 * self.base_lin_vel), dim=-1)
+            # TODO: mass_params_tensor could be wrong
+            priv_latent = torch.cat((
+                self.mass_params_tensor,
+                self.friction_coeffs,
+                self.motor_strengths[0]-1,
+                self.motor_strengths[1]-1
+            ),dim=-1)
+            
+            if self.cfg.terrain.measure_heights:
+                heights = torch.clip(self.root_states[:, 2].unsqueeze(1) - 0.3 - self.measured_heights, -1, 1.)
+                self.obs_buf = torch.cat([obs_buf, heights, priv_explicit, priv_latent, self.obs_history_buf.view(self.num_envs, -1)], dim=-1)
+            else:
+                self.obs_buf = torch.cat([obs_buf, priv_explicit, priv_latent, self.obs_history_buf.view(self.num_envs, -1)], dim=-1)
+            obs_buf[:, 6:8] = 0  # mask yaw in proprioceptive history
+            self.obs_history_buf = torch.where(
+                (self.episode_length_buf <= 1)[:, None, None], 
+                torch.stack([obs_buf] * self.cfg.env.history_len, dim=1),
+                torch.cat([
+                    self.obs_history_buf[:, 1:],
+                    obs_buf.unsqueeze(1)
+                ], dim=1)
+            )
+
+            self.contact_buf = torch.where(
+                (self.episode_length_buf <= 1)[:, None, None], 
+                torch.stack([self.contact_filt.float()] * self.cfg.env.contact_buf_len, dim=1),
+                torch.cat([
+                    self.contact_buf[:, 1:],
+                    self.contact_filt.float().unsqueeze(1)
+                ], dim=1)
+            )
+        else:
+            # aggregate the sensor data
+            self.pre_obs_buf = []
+            for sensor in self.sensors:
+                obs_tmp = sensor.get_observation()
+                # if sensor.name == "JointPositionSensor" or sensor.name == "JointVelocitySensor":
+                #     obs_tmp[:, -1]=0
+                self.pre_obs_buf += [obs_tmp]
+                # print("sensor type: ", sensor) #, " observation: ", obs_tmp)
+                
+
+            # print(torch.cat(self.pre_obs_buf, dim=-1).shape)
+            
+            self.pre_obs_buf = torch.reshape(torch.cat(self.pre_obs_buf, dim=-1), (self.num_envs, -1))
+            self.obs_buf = self.pre_obs_buf.clone()
+            if self.cfg.env.random_mask_input:
+                self.mask_num = 10
+                self.mask_input = torch.randint(0, self.obs_buf.shape[1], (self.num_envs, self.mask_num), device=self.device)
+                self.obs_buf[:, self.mask_input] = 0.0
+
+            self.privileged_obs_buf_list = []
+            # aggregate the privileged observations
+            for sensor in self.privileged_sensors:
+                self.privileged_obs_buf_list += [sensor.get_observation()]
+            # print("privileged_obs_buf: ", self.privileged_obs_buf)
+            if len(self.privileged_obs_buf_list):
+                self.privileged_obs_buf = torch.reshape(torch.cat(self.privileged_obs_buf_list, dim=-1), (self.num_envs, -1))
+            # print("self.privileged_obs_buf: ", self.privileged_obs_buf)
+            # add noise if needed
+            if self.cfg.noise.add_noise:
+                self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
+
             
 
-        # print(torch.cat(self.pre_obs_buf, dim=-1).shape)
-        
-        self.pre_obs_buf = torch.reshape(torch.cat(self.pre_obs_buf, dim=-1), (self.num_envs, -1))
-        self.obs_buf = self.pre_obs_buf.clone()
-        if self.cfg.env.random_mask_input:
-            self.mask_num = 10
-            self.mask_input = torch.randint(0, self.obs_buf.shape[1], (self.num_envs, self.mask_num), device=self.device)
-            self.obs_buf[:, self.mask_input] = 0.0
-
-        self.privileged_obs_buf_list = []
-        # aggregate the privileged observations
-        for sensor in self.privileged_sensors:
-            self.privileged_obs_buf_list += [sensor.get_observation()]
-        # print("privileged_obs_buf: ", self.privileged_obs_buf)
-        if len(self.privileged_obs_buf_list):
-            self.privileged_obs_buf = torch.reshape(torch.cat(self.privileged_obs_buf_list, dim=-1), (self.num_envs, -1))
-        # print("self.privileged_obs_buf: ", self.privileged_obs_buf)
-        # add noise if needed
-        if self.cfg.noise.add_noise:
-            self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
-
-        
-
-        assert self.privileged_obs_buf.shape[
-                   1] == self.cfg.env.num_privileged_obs, f"num_privileged_obs ({self.cfg.env.num_privileged_obs}) != the number of privileged observations ({self.privileged_obs_buf.shape[1]}), you will discard data from the student!"
+            assert self.privileged_obs_buf.shape[
+                    1] == self.cfg.env.num_privileged_obs, f"num_privileged_obs ({self.cfg.env.num_privileged_obs}) != the number of privileged observations ({self.privileged_obs_buf.shape[1]}), you will discard data from the student!"
 
     
     def create_sim(self):
@@ -1168,6 +1295,9 @@ class LeggedRobot(BaseTask):
         env_ids = (self.episode_length_buf % int(self.cfg.domain_rand.foot_height_forced_rand_interval) == 0).nonzero(
             as_tuple=False).flatten()
         self._randomize_feet_forces(env_ids)
+
+    def _gather_cur_goals(self, future=0):
+        return self.env_goals.gather(1, (self.cur_goal_idx[:, None, None]+future).expand(-1, -1, self.env_goals.shape[-1])).squeeze(1)
 
     def _resample_commands(self, env_ids):
 
@@ -1975,6 +2105,9 @@ class LeggedRobot(BaseTask):
         if self.cfg.commands.sample_feasible_commands:
             self.target_joint_values = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
+        # parkour
+        self.reach_goal_timer = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+
     def randomize_ep_len_buf(self):
         self.episode_length_buf = torch.randint_like(self.episode_length_buf,
                                                              high=int(self.max_episode_length))
@@ -2369,6 +2502,8 @@ class LeggedRobot(BaseTask):
         self._randomize_ball_drag()
         # self._randomize_feet_forces()
 
+        self.mass_params_tensor = torch.zeros(self.num_envs, 4, dtype=torch.float, device=self.device, requires_grad=False)
+
         if self.cfg.env.all_agents_share:
             shared_env = self.gym.create_env(self.sim, env_lower, env_upper, int(np.sqrt(self.num_envs)))
 
@@ -2401,6 +2536,8 @@ class LeggedRobot(BaseTask):
             
             self.robot_actor_handles.append(robot_handle)
             self.robot_actor_idxs.append(self.gym.get_actor_index(env_handle, robot_handle, gymapi.DOMAIN_SIM))
+
+            self.mass_params_tensor[i, :] = torch.from_numpy(body_props.mass).to(self.device).to(torch.float)
 
             # add objects
             if self.cfg.env.add_objects:
@@ -2545,6 +2682,13 @@ class LeggedRobot(BaseTask):
             self.terrain_class = torch.from_numpy(self.terrain.terrain_type).to(self.device).to(torch.float)
             self.env_class[:] = self.terrain_class[self.terrain_levels, self.terrain_types]
             self.terrain_goals = torch.from_numpy(self.terrain.goals).to(self.device).to(torch.float)
+            self.env_goals = torch.zeros(self.num_envs, self.cfg.terrain.num_goals + self.cfg.env.num_future_goal_obs, 3, device=self.device, requires_grad=False)
+            self.cur_goal_idx = torch.zeros(self.num_envs, device=self.device, requires_grad=False, dtype=torch.long)
+            temp = self.terrain_goals[self.terrain_levels, self.terrain_types]
+            last_col = temp[:, -1].unsqueeze(1)
+            self.env_goals[:] = torch.cat((temp, last_col.repeat(1, self.cfg.env.num_future_goal_obs, 1)), dim=1)[:]
+            self.cur_goals = self._gather_cur_goals()
+            self.next_goals = self._gather_cur_goals(future=1)
 
 
         elif cfg.terrain.mesh_type in ["boxes", "boxes_tm"]:
@@ -2606,6 +2750,41 @@ class LeggedRobot(BaseTask):
         cfg.domain_rand.gravity_rand_duration = np.ceil(
             cfg.domain_rand.gravity_rand_interval * cfg.domain_rand.gravity_impulse_duration)
         cfg.domain_rand.foot_height_forced_rand_interval = np.ceil(cfg.domain_rand.foot_height_forced_rand_interval_s / self.dt)
+    
+    def _draw_goals(self):
+        sphere_geom = gymutil.WireframeSphereGeometry(0.1, 32, 32, None, color=(1, 0, 0))
+        sphere_geom_cur = gymutil.WireframeSphereGeometry(0.1, 32, 32, None, color=(0, 0, 1))
+        sphere_geom_reached = gymutil.WireframeSphereGeometry(self.cfg.env.next_goal_threshold, 32, 32, None, color=(0, 1, 0))
+        goals = self.terrain_goals[self.terrain_levels[self.lookat_id], self.terrain_types[self.lookat_id]].cpu().numpy()
+        for i, goal in enumerate(goals):
+            goal_xy = goal[:2] + self.terrain.cfg.border_size
+            pts = (goal_xy/self.terrain.cfg.horizontal_scale).astype(int)
+            goal_z = self.height_samples[pts[0], pts[1]].cpu().item() * self.terrain.cfg.vertical_scale
+            pose = gymapi.Transform(gymapi.Vec3(goal[0], goal[1], goal_z), r=None)
+            if i == self.cur_goal_idx[self.lookat_id].cpu().item():
+                gymutil.draw_lines(sphere_geom_cur, self.gym, self.viewer, self.envs[self.lookat_id], pose)
+                if self.reached_goal_ids[self.lookat_id]:
+                    gymutil.draw_lines(sphere_geom_reached, self.gym, self.viewer, self.envs[self.lookat_id], pose)
+            else:
+                gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[self.lookat_id], pose)
+        
+        if not self.cfg.perception.compute_depth:
+            sphere_geom_arrow = gymutil.WireframeSphereGeometry(0.02, 16, 16, None, color=(1, 0.35, 0.25))
+            pose_robot = self.root_states[self.lookat_id, :3].cpu().numpy()
+            for i in range(5):
+                norm = torch.norm(self.target_pos_rel, dim=-1, keepdim=True)
+                target_vec_norm = self.target_pos_rel / (norm + 1e-5)
+                pose_arrow = pose_robot[:2] + 0.1*(i+3) * target_vec_norm[self.lookat_id, :2].cpu().numpy()
+                pose = gymapi.Transform(gymapi.Vec3(pose_arrow[0], pose_arrow[1], pose_robot[2]), r=None)
+                gymutil.draw_lines(sphere_geom_arrow, self.gym, self.viewer, self.envs[self.lookat_id], pose)
+            
+            sphere_geom_arrow = gymutil.WireframeSphereGeometry(0.02, 16, 16, None, color=(0, 1, 0.5))
+            for i in range(5):
+                norm = torch.norm(self.next_target_pos_rel, dim=-1, keepdim=True)
+                target_vec_norm = self.next_target_pos_rel / (norm + 1e-5)
+                pose_arrow = pose_robot[:2] + 0.2*(i+3) * target_vec_norm[self.lookat_id, :2].cpu().numpy()
+                pose = gymapi.Transform(gymapi.Vec3(pose_arrow[0], pose_arrow[1], pose_robot[2]), r=None)
+                gymutil.draw_lines(sphere_geom_arrow, self.gym, self.viewer, self.envs[self.lookat_id], pose)
 
     def _init_height_points(self, env_ids, cfg):
         """ Returns points at which the height measurments are sampled (in base frame)

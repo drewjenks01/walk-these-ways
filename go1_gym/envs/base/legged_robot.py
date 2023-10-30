@@ -127,8 +127,6 @@ class LeggedRobot(BaseTask):
             indices = -self.delay -1
             actions = self.action_history_buf[:, indices.long()] # delay for 1/50=20ms
 
-        self.global_counter += 1
-
         clip_actions = self.cfg.normalization.clip_actions
         self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
         # step physics and render each frame
@@ -194,6 +192,7 @@ class LeggedRobot(BaseTask):
                                 0:3]
             
         self.post_physics_step()
+        self.global_counter += 1
 
         if self.cfg.env.save_torques:
             self.torques_substeps_list = torch.stack(self.torques_substeps_list)

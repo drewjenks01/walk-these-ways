@@ -478,38 +478,53 @@ class LeggedRobot(BaseTask):
     def check_termination(self):
         """ Check if environments need to be reset
         """
-        self.contact_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1.,
-                                   dim=1)
+        # parkour
+        self.reset_buf = torch.zeros((self.num_envs, ), dtype=torch.bool, device=self.device)
+        roll_cutoff = torch.abs(self.roll) > 1.5
+        pitch_cutoff = torch.abs(self.pitch) > 1.5
+        reach_goal_cutoff = self.cur_goal_idx >= self.cfg.terrain.num_goals
+        height_cutoff = self.root_states[:, 2] < -0.25
 
-        self.reset_buf = torch.clone(self.contact_buf)
-        # print(f'1. contact: {torch.any(self.reset_buf)}')
-        self.time_out_buf = self.episode_length_buf > self.cfg.env.max_episode_length  # no terminal reward for time-outs
-
+        self.time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
+        self.time_out_buf |= reach_goal_cutoff
 
         self.reset_buf |= self.time_out_buf
-        # print(f'2. timeout: {torch.any(self.reset_buf)}')
+        self.reset_buf |= roll_cutoff
+        self.reset_buf |= pitch_cutoff
+        self.reset_buf |= height_cutoff
+        
+        # self.contact_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1.,
+        #                            dim=1)
 
-        if self.cfg.rewards.use_terminal_body_height:
-            self.body_height_buf = torch.mean(self.root_states[self.robot_actor_idxs, 2].unsqueeze(1) - self.measured_heights, dim=1) \
-                                   < self.cfg.rewards.terminal_body_height
+        # self.reset_buf = torch.clone(self.contact_buf)
+        # # print(f'1. contact: {torch.any(self.reset_buf)}')
+        # self.time_out_buf = self.episode_length_buf > self.cfg.env.max_episode_length  # no terminal reward for time-outs
 
-            self.reset_buf = torch.logical_or(self.body_height_buf, self.reset_buf)
 
-        if self.cfg.rewards.use_terminal_roll_pitch:
-            self.body_ori_buf = torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1) \
-                                > self.cfg.rewards.terminal_body_ori
-            # print('resetting?')
+        # self.reset_buf |= self.time_out_buf
+        # # print(f'2. timeout: {torch.any(self.reset_buf)}')
 
-            self.reset_buf = torch.logical_or(self.body_ori_buf, self.reset_buf)
+        # if self.cfg.rewards.use_terminal_body_height:
+        #     self.body_height_buf = torch.mean(self.root_states[self.robot_actor_idxs, 2].unsqueeze(1) - self.measured_heights, dim=1) \
+        #                            < self.cfg.rewards.terminal_body_height
 
-        if self.cfg.rewards.use_terminal_time_since_last_obs:
-            # if there is an ObjectSensor, check its time_since_last_obs property for termination
-            if "ObjectSensor" in self.cfg.sensors.sensor_names:
-                object_sensor_idx = self.cfg.sensors.sensor_names.index("ObjectSensor")
-                object_sensor = self.sensors[object_sensor_idx]
-                time_since_last_obs = object_sensor.time_since_last_obs
-                self.time_since_last_obs_buf = time_since_last_obs > self.cfg.rewards.terminal_time_since_last_obs
-                self.reset_buf = torch.logical_or(self.time_since_last_obs_buf, self.reset_buf)
+        #     self.reset_buf = torch.logical_or(self.body_height_buf, self.reset_buf)
+
+        # if self.cfg.rewards.use_terminal_roll_pitch:
+        #     self.body_ori_buf = torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1) \
+        #                         > self.cfg.rewards.terminal_body_ori
+        #     # print('resetting?')
+
+        #     self.reset_buf = torch.logical_or(self.body_ori_buf, self.reset_buf)
+
+        # if self.cfg.rewards.use_terminal_time_since_last_obs:
+        #     # if there is an ObjectSensor, check its time_since_last_obs property for termination
+        #     if "ObjectSensor" in self.cfg.sensors.sensor_names:
+        #         object_sensor_idx = self.cfg.sensors.sensor_names.index("ObjectSensor")
+        #         object_sensor = self.sensors[object_sensor_idx]
+        #         time_since_last_obs = object_sensor.time_since_last_obs
+        #         self.time_since_last_obs_buf = time_since_last_obs > self.cfg.rewards.terminal_time_since_last_obs
+        #         self.reset_buf = torch.logical_or(self.time_since_last_obs_buf, self.reset_buf)
 
             
     def reset_idx(self, env_ids):

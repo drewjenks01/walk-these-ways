@@ -562,6 +562,10 @@ class LeggedRobot(BaseTask):
         self.feet_air_time[env_ids] = 0.
         self.path_distance[env_ids] = 0.
         self.past_base_pos[env_ids] = self.base_pos.clone()[env_ids]
+        self.contact_buf[env_ids] = 0.
+        self.action_history_buf[env_ids] = 0.
+        self.cur_goal_idx[env_ids] = 0.
+        self.reach_goal_timer[env_ids] = 0.
 
         self.reset_buf = self.reset_buf.clone()
         self.reset_buf[env_ids] = 1
@@ -1261,7 +1265,7 @@ class LeggedRobot(BaseTask):
         props[0].com = gymapi.Vec3(self.com_displacements[env_id, 0], self.com_displacements[env_id, 1],
                                    self.com_displacements[env_id, 2])
         
-        mass_params = np.concatenate(props[0].mass. props[0].com)
+        mass_params = np.array([ self.payloads[env_id].cpu(),self.com_displacements[env_id, 0].cpu(),self.com_displacements[env_id, 1].cpu(),self.com_displacements[env_id, 2].cpu()])
         return props, mass_params
 
     def _post_physics_step_callback(self):

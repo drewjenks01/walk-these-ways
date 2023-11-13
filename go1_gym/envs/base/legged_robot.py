@@ -804,6 +804,7 @@ class LeggedRobot(BaseTask):
         if self.cfg.terrain.parkour:
             imu_obs = torch.stack((self.roll, self.pitch), dim=1)
             if self.global_counter % 5 == 0:
+                print('here')
                 self.delta_yaw = self.target_yaw - self.yaw
                 self.delta_next_yaw = self.next_target_yaw - self.yaw
             obs_buf = torch.cat((

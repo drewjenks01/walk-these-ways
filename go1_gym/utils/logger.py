@@ -39,7 +39,7 @@ class Logger:
             extras["train/episode"]["Number of env. with ball visible"] = self.env.sensors[object_sensor_idx].visible_envs
         if self.env.cfg.terrain.curriculum:
             extras["train/episode"]["terrain_level"] = torch.mean(
-                self.env.terrain_levels.float())
+                self.env.terrain_levels.float()).item()
         if self.env.cfg.commands.command_curriculum:
             commands = self.env.commands
             extras["env_bins"] = torch.Tensor(self.env.env_command_bins)
@@ -121,7 +121,7 @@ class Logger:
             extras["train/episode"]["Number of env. terminated on time_since_last_obs"] = len(self.env.time_since_last_obs_buf.nonzero(as_tuple=False).flatten())
 
         extras["train/episode"]['Number of env. reset'] = len(env_ids)
-        extras["train/episode"]['Average episode length'] = torch.mean(self.env.episode_length_buf[env_ids]*self.env.dt)
+        extras["train/episode"]['Average episode length'] = torch.mean(self.env.episode_length_buf[env_ids]*self.env.dt).item()
 
         extras["train/episode"]["too_big_change_envs"] = self.env.too_big_change_envs.sum()
 

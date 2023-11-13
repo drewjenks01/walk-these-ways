@@ -1,3 +1,6 @@
 [submodule "navigation/vision/models/minigpt4"]
 	path = navigation/vision/models/minigpt4
 	url = https://github.com/Vision-CAIR/MiniGPT-4.git
+[submodule "navigation/vlm/LLaVA"]
+	path = navigation/vlm/LLaVA
+	url = https://github.com/haotian-liu/LLaVA.git

@@ -84,6 +84,8 @@ class Cfg(PrefixProto, cli=False):
         reach_goal_delay = 0.1
         next_goal_threshold = 0.2
         contact_buf_len = 100
+        history_encoding = True
+        n_proprio = 53
 
     class robot(PrefixProto, cli=False):
         name = "go1"
@@ -131,6 +133,7 @@ class Cfg(PrefixProto, cli=False):
         # misc
         generated = False
         parkour = False
+        parkour_flat = False    # only generate flat, but bumpy, terrain
 
         # shared
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
@@ -151,10 +154,6 @@ class Cfg(PrefixProto, cli=False):
         terrain_width = 8.
         num_rows = 10  # number of terrain rows (levels)
         num_cols = 20  # number of terrain cols (types)
-        measure_heights = True
-        #1mx1.6m rectangle (without center line)
-        measured_points_x = [-0.45, -0.3, -0.15, 0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.05, 1.2] # 1mx1.6m rectangle (without center line)
-        measured_points_y = [-0.75, -0.6, -0.45, -0.3, -0.15, 0., 0.15, 0.3, 0.45, 0.6, 0.75]
 
 
         # wtw specific
@@ -372,6 +371,9 @@ class Cfg(PrefixProto, cli=False):
         pacing_offset = False
         balance_gait_distribution = True
         gaitwise_curricula = True
+
+        # parkour
+        ang_vel_clip = 0.4
 
     class curriculum_thresholds(PrefixProto, cli=False):
         tracking_lin_vel = 0.8  # closer to 1 is tighter
@@ -631,7 +633,7 @@ class Cfg(PrefixProto, cli=False):
         hip_pos = 0.0 #-0.5
         dof_error = 0.0 #-0.04
         feet_stumble = 0.0 #-1
-        # feet_edge = -1
+        feet_edge = -1
         trot_symmetry = 0.0
         
 
@@ -775,3 +777,6 @@ class Cfg(PrefixProto, cli=False):
         image_height = 100
         image_width = 100
         image_horizontal_fov = 110.0 # 110 degrees
+
+        # parkour
+        update_interval = 5

@@ -161,6 +161,10 @@ class Terrain:
         stone_distance = 0.05 if difficulty==0 else 0.1
         gap_size = 1. * difficulty
         pit_depth = 1. * difficulty
+        
+        if self.cfg.parkour_flat:
+            choice = max(self.proportions)+1
+
         if choice < self.proportions[0]:
             idx = 0
             if choice < self.proportions[0]/ 2:
@@ -201,9 +205,14 @@ class Terrain:
             # gap_size = random.uniform(self.cfg.gap_size[0], self.cfg.gap_size[1])
             gap_parkour_terrain(terrain, difficulty, platform_size=4)
             self.add_roughness(terrain)
-        elif choice < self.proportions[8]:
+        elif choice < self.proportions[8] or self.cfg.parkour_flat:
             idx = 9
             self.add_roughness(terrain)
+            goals = np.zeros((8,2))
+            for i in range(8):
+                goals[i][0] = i
+                goals[i][1] = i
+            terrain.goals = goals * terrain.horizontal_scale
             # pass
         elif choice < self.proportions[9]:
             idx = 10

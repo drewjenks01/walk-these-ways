@@ -13,7 +13,9 @@ class HistoryWrapper(gym.Wrapper):
         self.history_frame_skip = self.env.cfg.env.history_frame_skip
 
         self.num_obs_history = self.obs_history_length * self.num_obs
-        self.obs_history_buf = torch.zeros(self.env.num_envs, self.obs_history_length * self.history_frame_skip, self.num_obs, dtype=torch.float,
+
+        # chane to match num scalar obs
+        self.obs_history_buf = torch.zeros(self.env.num_envs, self.obs_history_length * self.history_frame_skip, self.env.cfg.terrain.num_scalar_observations, dtype=torch.float,
                                        device=self.env.device, requires_grad=False)
         self.obs_history = torch.zeros(self.env.num_envs, self.num_obs_history, dtype=torch.float,
                                        device=self.env.device, requires_grad=False)
@@ -26,9 +28,31 @@ class HistoryWrapper(gym.Wrapper):
         obs, rew, done, info = self.env.step(action)
         privileged_obs = info["privileged_obs"]
 
-        self.obs_history_buf = torch.cat((self.obs_history_buf[:, 1:, :], obs.unsqueeze(1)), dim=1)
+        history_obs = obs.clone()
+
+        # removed height samples from observation
+        history_obs = []
+
+        # remove hieghts from obs
+
+        history_obs[:, 6:8] = 0  # mask yaw in proprioceptive history
+
+
+        
+        # self.obs_history_buf = torch.where(
+        #     (self.env.episode_length_buf <= 1)[:, None, None], 
+        #     torch.stack([history_obs] * self.env.cfg.env.num_observation_history, dim=1),
+        #     torch.cat([
+        #         self.obs_history_buf[:, 1:],
+        #         history_obs.unsqueeze(1)
+        #     ], dim=1)
+        # )
+
+        self.obs_history_buf = torch.cat((self.obs_history_buf[:, 1:, :], history_obs.unsqueeze(1)), dim=1)
         self.obs_history = self.obs_history_buf[:, self.history_frame_skip-1::self.history_frame_skip, :].reshape(self.env.num_envs, -1)
-        assert self.obs_history[:, -self.num_obs:].allclose(obs[:, :]), "obs_history does not end with obs"
+        #assert self.obs_history[:, -self.num_obs:].allclose(obs[:, :]), "obs_history does not end with obs"
+
+
 
         rew_enrg = self.env.energy_rew
         bsz = self.env.num_envs // 2

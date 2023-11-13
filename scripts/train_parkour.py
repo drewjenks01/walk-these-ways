@@ -1,5 +1,11 @@
+import os
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+
+from email.policy import default
 from params_proto import PrefixProto, ParamsProto
 import isaacgym
+import argparse
+import logging
 assert isaacgym
 class RunCfg(PrefixProto, cli=False):
     experiment_group = "example_sweep"
@@ -24,7 +30,13 @@ def configure_env():
 
     config_go1(Cfg)
 
-    Cfg.env.num_envs = 1000
+    Cfg.env.num_envs = 2048
+    Cfg.env.num_observation_history = 10
+    Cfg.env.num_privileged_obs = 32+9
+    Cfg.env.num_observations = 53+132
+    #Cfg.env.num_observations = 53
+    Cfg.env.num_scalar_observations = 53
+
     Cfg.robot.name = "go1"
     Cfg.sensors.sensor_names = [
                         "OrientationSensor",
@@ -67,6 +79,7 @@ def configure_env():
 
     Cfg.control.decimation = 4
     Cfg.sim.dt = 0.005 * 4. / Cfg.control.decimation
+    #Cfg.sim.physx.max_gpu_contact_pairs = 2 * (2 ** 23)
 
     Cfg.commands.num_lin_vel_bins = 30
     Cfg.commands.num_ang_vel_bins = 30
@@ -116,6 +129,8 @@ def configure_env():
     Cfg.domain_rand.motor_offset_range = [-0.001, 0.001]
     # Cfg.env.priv_observe_motor_offset = False
     Cfg.domain_rand.push_robots = False
+    Cfg.domain_rand.push_interval_s = 8
+    Cfg.domain_rand.max_push_vel_xy = 0.5
     Cfg.domain_rand.randomize_Kp_factor = False
     # Cfg.env.priv_observe_Kp_factor = False
     Cfg.domain_rand.randomize_Kd_factor = False
@@ -127,22 +142,18 @@ def configure_env():
     # Cfg.env.priv_observe_foot_displacement = False
     # Cfg.env.priv_observe_gravity_transformed_foot_displacement = False
 
-    Cfg.env.num_privileged_obs = 3 #+ 187
-    Cfg.env.num_observation_history = 10
-
     Cfg.init_state.pos = [0.0, 0.0, 0.40]
 
     Cfg.domain_rand.rand_interval_s = 4
     Cfg.commands.num_commands = 15
     # Cfg.env.observe_two_prev_actions = True
     # Cfg.env.observe_yaw = False
-    Cfg.env.num_observations = 54
-    Cfg.env.num_scalar_observations = 54
+
     Cfg.env.observe_gait_commands = True
     # Cfg.env.observe_timing_parameter = False
     # Cfg.env.observe_clock_inputs = True
     # Cfg.env.episode_length_s = 5.0
-    Cfg.commands.heading_command = False
+    Cfg.commands.heading_command = True
 
     Cfg.domain_rand.tile_height_range = [-0.0, 0.0]
     Cfg.domain_rand.tile_height_curriculum = False
@@ -172,14 +183,13 @@ def configure_env():
     Cfg.terrain.static_friction = 1.0
     Cfg.terrain.dynamic_friction = 1.0
     Cfg.terrain.restitution = 0.0
-    Cfg.terrain.measure_heights = True
     Cfg.terrain.slope_treshold = 1.5
     Cfg.terrain.selected = False
     Cfg.terrain.terrain_kwargs = None
     Cfg.terrain.terrain_proportions = list(Cfg.terrain.terrain_dict.values())
     Cfg.terrain.horizontal_scale = 0.05
     Cfg.terrain.vertical_scale = 0.005
-    Cfg.terrain.curriculum = False
+    Cfg.terrain.curriculum = True
     Cfg.terrain.border_size = 5
 
     Cfg.terrain.x_init_range = 0.2
@@ -195,6 +205,11 @@ def configure_env():
     Cfg.terrain.min_init_terrain_level = 0
     Cfg.terrain.platform_size = 0.7
     Cfg.terrain.difficulty_scale = 0.4
+
+    Cfg.perception.measure_heights = True
+    Cfg.perception.measured_points_x = [-0.45, -0.3, -0.15, 0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.05, 1.2] # 1mx1.6m rectangle (without center line)
+    Cfg.perception.measured_points_y = [-0.75, -0.6, -0.45, -0.3, -0.15, 0., 0.15, 0.3, 0.45, 0.6, 0.75]
+    #Cfg.perception.num_height_points = 
 
     # Cfg.terrain.curriculum = False
     # Cfg.terrain.terrain_proportions = [0.4, 0.2, 0.2, 0.0, 0.0, 0.2, 0.0]
@@ -224,6 +239,8 @@ def configure_env():
     # Cfg.rewards.only_positive_rewards = False
     Cfg.rewards.only_positive_rewards_ji22_style = False
     Cfg.rewards.sigma_rew_neg = 0.02
+    Cfg.rewards.tracking_sigma = 0.2
+    Cfg.rewards.max_contact_force = 40.
 
     # Cfg.reward_scales.tracking_x_vel = -20.0
     # Cfg.reward_scales.tracking_other_vels = -1.0
@@ -248,7 +265,7 @@ def configure_env():
     # # Cfg.reward_scales.tracking_ang_vel_integral = 0.5
 
     Cfg.reward_scales.tracking_goal_vel = 1.5
-    Cfg.reward_scales.tracking_yaw = 0.0 #0.5
+    Cfg.reward_scales.tracking_yaw = 0.5 #0.5
     # regularization rewards
     Cfg.reward_scales.lin_vel_z = -1.0
     Cfg.reward_scales.ang_vel_xy = -0.05
@@ -261,7 +278,7 @@ def configure_env():
     Cfg.reward_scales.hip_pos = -0.5
     Cfg.reward_scales.dof_error = -0.04
     Cfg.reward_scales.feet_stumble = -1
-    # Cfg.reward_scales.feet_edge = -1
+    Cfg.reward_scales.feet_edge = -1
 
     # Cfg.reward_scales.lin_vel_z = -0.0
     # Cfg.reward_scales.ang_vel_xy = -0.0
@@ -274,7 +291,7 @@ def configure_env():
     Cfg.reward_scales.arm_dof_acc = 0.0
     Cfg.reward_scales.base_height = -0.0
     Cfg.reward_scales.feet_air_time = 0.0
-    Cfg.reward_scales.collision = -0.0
+    #Cfg.reward_scales.collision = -0.0
     # Cfg.reward_scales.feet_stumble = -0.0
     # Cfg.reward_scales.action_rate = -0.0
     # Cfg.reward_scales.energy_action_smoothness_1 = -0.001
@@ -347,7 +364,7 @@ def configure_env():
 
     return Cfg
 
-def train_go1(headless=True, **deps):
+def train_go1(args, **deps):
     # configure
     Cfg = configure_env()
 
@@ -369,9 +386,13 @@ def train_go1(headless=True, **deps):
     Cfg.noise_scales._update(deps)
     Cfg.perception._update(deps)
 
+    if args.flat_terrain:
+        Cfg.terrain.parkour_flat = True
+
     # create the environment
-    gpu_id = 0
-    env = VelocityTrackingEasyEnv(sim_device=f'cuda:{gpu_id}', headless=headless, cfg=Cfg)
+    gpu_id = args.device
+    device = f'cuda:{gpu_id}'
+    env = VelocityTrackingEasyEnv(sim_device=device, headless=args.headless, cfg=Cfg)
     Args = namedtuple('args', ['exp', 'alpha', 'init_path', 'lmbd', 'min_vel', 'max_vel', 'num_vel_itvl', 'conditional'])
     exp = 'eipo_trkv_enrg'
     env.logger.is_eipo = True
@@ -386,8 +407,11 @@ def train_go1(headless=True, **deps):
                 conditional=False)
     env = HistoryWrapper(env, args)
 
+    logging.basicConfig(level=logging.CRITICAL)
+
     # log the experiment parameters
     import wandb
+
     wandb.init(
       # set the wandb project where this run will be logged
       project="walk-these-ways",
@@ -400,11 +424,12 @@ def train_go1(headless=True, **deps):
       "RunnerArgs": vars(RunnerArgs),
       "Cfg": vars(Cfg),
       },
-      mode="online"
+      mode="online",
+      settings=wandb.Settings(console='off')
     )
 
     # train
-    runner = Runner(env, args, device=f"cuda:{gpu_id}")
+    runner = Runner(env, args, device=device)
     runner.learn(num_learning_iterations=15000, init_at_random_ep_len=True, eval_freq=100)
 
 def play_go1(headless=True):
@@ -430,6 +455,19 @@ def play_go1(headless=True):
     env.close()
 
 
+def parse_args():
+    #logging.basicConfig(level=logging.INFO)
+
+    parser = argparse.ArgumentParser(description="Train a full vision model.")
+
+    parser.add_argument("--headless", action="store_true", default=False)
+    parser.add_argument("--device", type=int, default=0)
+    parser.add_argument("--flat_terrain", action="store_true", default=False)
+
+    args = parser.parse_args()
+    return args
+
+
 if __name__ == '__main__':
     from pathlib import Path
     from go1_gym import MINI_GYM_ROOT_DIR
@@ -437,5 +475,6 @@ if __name__ == '__main__':
     stem = Path(__file__).stem
 
     # to see the environment rendering, set headless=False
+    args = parse_args()
 
-    train_go1(headless=False)
+    train_go1(args)

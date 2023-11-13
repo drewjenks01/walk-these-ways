@@ -25,10 +25,10 @@ class TrimeshTerrain(Terrain):
         self.env.gym.add_triangle_mesh(self.env.sim, self.env.terrain.vertices.flatten(order='C'),
                                    self.env.terrain.triangles.flatten(order='C'), tm_params)
         print('Trimesh added')
-        self.height_samples = torch.tensor(self.env.terrain.heightsamples).view(self.env.terrain.tot_rows,
+        self.env.height_samples = torch.tensor(self.env.terrain.heightsamples).view(self.env.terrain.tot_rows,
                                                                             self.env.terrain.tot_cols).to(self.env.device)
         if self.env.terrain.cfg.parkour:
-            self.x_edge_mask = torch.tensor(self.env.terrain.x_edge_mask).view(self.env.terrain.tot_rows, self.env.terrain.tot_cols).to(self.env.device)
+            self.env.x_edge_mask = torch.tensor(self.env.terrain.x_edge_mask).view(self.env.terrain.tot_rows, self.env.terrain.tot_cols).to(self.env.device)
 
 
     def initialize(self):
